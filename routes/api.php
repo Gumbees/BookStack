@@ -59,6 +59,8 @@ Route::post('shelves', [EntityControllers\BookshelfApiController::class, 'create
 Route::get('shelves/{id}', [EntityControllers\BookshelfApiController::class, 'read']);
 Route::put('shelves/{id}', [EntityControllers\BookshelfApiController::class, 'update']);
 Route::delete('shelves/{id}', [EntityControllers\BookshelfApiController::class, 'delete']);
+Route::put('shelves/{id}/books/{bookId}', [EntityControllers\BookshelfApiController::class, 'attachBook']);
+Route::delete('shelves/{id}/books/{bookId}', [EntityControllers\BookshelfApiController::class, 'detachBook']);
 
 // Additional Model Routes, in alphabetical order
 

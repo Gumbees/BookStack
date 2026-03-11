@@ -3,6 +3,7 @@
 namespace BookStack\App\Providers;
 
 use BookStack\Facades\Theme;
+use BookStack\OAuth\OAuthService;
 use BookStack\Theming\ThemeEvents;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
@@ -32,6 +33,7 @@ class RouteServiceProvider extends ServiceProvider
         $this->routes(function () {
             $this->mapWebRoutes();
             $this->mapApiRoutes();
+            $this->mapOAuthRoutes();
         });
     }
 
@@ -70,6 +72,24 @@ class RouteServiceProvider extends ServiceProvider
             'prefix'     => 'api',
         ], function ($router) {
             require base_path('routes/api.php');
+        });
+    }
+
+    /**
+     * Define the OAuth 2.0 provider routes.
+     * Uses the web middleware group for session/CSRF support on auth endpoints,
+     * while token/register/metadata endpoints are sessionless.
+     */
+    protected function mapOAuthRoutes(): void
+    {
+        if (!OAuthService::enabled()) {
+            return;
+        }
+
+        Route::group([
+            'middleware' => 'web',
+        ], function () {
+            require base_path('routes/oauth.php');
         });
     }
 

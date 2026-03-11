@@ -4,6 +4,7 @@ namespace BookStack\Api;
 
 use BookStack\Access\LoginService;
 use BookStack\Exceptions\ApiAuthException;
+use BookStack\OAuth\OAuthService;
 use BookStack\Permissions\Permission;
 use Illuminate\Auth\GuardHelpers;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -88,12 +89,24 @@ class ApiTokenGuard implements Guard
 
     /**
      * Check the API token in the request and fetch a valid authorised user.
+     * Supports both legacy "Token {id}:{secret}" and OAuth "Bearer {token}" formats.
      *
      * @throws ApiAuthException
      */
     protected function getAuthorisedUserFromRequest(): Authenticatable
     {
         $authToken = trim($this->request->headers->get('Authorization', ''));
+
+        if (empty($authToken)) {
+            throw new ApiAuthException(trans('errors.api_no_authorization_found'));
+        }
+
+        // OAuth Bearer token
+        if (str_starts_with($authToken, 'Bearer ')) {
+            return $this->getAuthorisedUserFromBearerToken($authToken);
+        }
+
+        // Legacy API token format: Token {id}:{secret}
         $this->validateTokenHeaderValue($authToken);
 
         [$id, $secret] = explode(':', str_replace('Token ', '', $authToken));
@@ -111,16 +124,46 @@ class ApiTokenGuard implements Guard
     }
 
     /**
-     * Validate the format of the token header value string.
+     * Resolve a user from an OAuth Bearer token.
+     *
+     * @throws ApiAuthException
+     */
+    protected function getAuthorisedUserFromBearerToken(string $authHeader): Authenticatable
+    {
+        if (!OAuthService::enabled()) {
+            throw new ApiAuthException('OAuth Bearer tokens are not enabled on this instance');
+        }
+
+        $bearerToken = trim(substr($authHeader, 7));
+        if (empty($bearerToken)) {
+            throw new ApiAuthException('Empty Bearer token');
+        }
+
+        $oauthService = app(OAuthService::class);
+        $user = $oauthService->findUserByAccessToken($bearerToken);
+
+        if (!$user) {
+            throw new ApiAuthException('Invalid or expired OAuth access token');
+        }
+
+        if ($this->loginService->awaitingEmailConfirmation($user)) {
+            throw new ApiAuthException(trans('errors.email_confirmation_awaiting'));
+        }
+
+        if (!$user->can(Permission::AccessApi)) {
+            throw new ApiAuthException(trans('errors.api_user_no_api_permission'), 403);
+        }
+
+        return $user;
+    }
+
+    /**
+     * Validate the format of the legacy token header value string.
      *
      * @throws ApiAuthException
      */
     protected function validateTokenHeaderValue(string $authToken): void
     {
-        if (empty($authToken)) {
-            throw new ApiAuthException(trans('errors.api_no_authorization_found'));
-        }
-
         if (strpos($authToken, ':') === false || strpos($authToken, 'Token ') !== 0) {
             throw new ApiAuthException(trans('errors.api_bad_authorization_format'));
         }

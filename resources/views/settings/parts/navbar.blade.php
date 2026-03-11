@@ -15,5 +15,8 @@
     @endif
     @if(userCan(\BookStack\Permissions\Permission::SettingsManage))
         <a href="{{ url('/settings/webhooks') }}" @if($selected == 'webhooks') class="active" @endif>@icon('webhooks'){{ trans('settings.webhooks') }}</a>
+        @if(\BookStack\OAuth\OAuthService::enabled())
+            <a href="{{ url('/settings/oauth-clients') }}" @if($selected == 'oauth-clients') class="active" @endif>@icon('lock-open'){{ trans('settings.oauth_clients') }}</a>
+        @endif
     @endif
 </nav>

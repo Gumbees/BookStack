@@ -4,6 +4,7 @@ namespace BookStack\Users\Controllers;
 
 use BookStack\Access\SocialDriverManager;
 use BookStack\Http\Controller;
+use BookStack\OAuth\OAuthService;
 use BookStack\Permissions\Permission;
 use BookStack\Permissions\PermissionApplicator;
 use BookStack\Settings\UserNotificationPreferences;
@@ -166,6 +167,11 @@ class UserAccountController extends Controller
     {
         $mfaMethods = user()->mfaValues()->get()->groupBy('method');
 
+        $oauthAuthorizations = collect();
+        if (OAuthService::enabled()) {
+            $oauthAuthorizations = app(OAuthService::class)->getActiveAuthorizationsForUser(user());
+        }
+
         $this->setPageTitle(trans('preferences.auth'));
 
         return view('users.account.auth', [
@@ -173,6 +179,7 @@ class UserAccountController extends Controller
             'mfaMethods' => $mfaMethods,
             'authMethod' => config('auth.method'),
             'activeSocialDrivers' => $socialDriverManager->getActive(),
+            'oauthAuthorizations' => $oauthAuthorizations,
         ]);
     }
 

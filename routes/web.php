@@ -2,6 +2,7 @@
 
 use BookStack\Access\Controllers as AccessControllers;
 use BookStack\Activity\Controllers as ActivityControllers;
+use BookStack\OAuth\Controllers as OAuthControllers;
 use BookStack\Api\ApiDocsController;
 use BookStack\Api\UserApiTokenController;
 use BookStack\App\HomeController;
@@ -262,6 +263,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/my-account/notifications', [UserControllers\UserAccountController::class, 'updateNotifications']);
     Route::get('/my-account/auth', [UserControllers\UserAccountController::class, 'showAuth']);
     Route::put('/my-account/auth/password', [UserControllers\UserAccountController::class, 'updatePassword']);
+    Route::delete('/my-account/oauth/{clientId}', [OAuthControllers\UserOAuthController::class, 'revokeAuthorization']);
     Route::get('/my-account/delete', [UserControllers\UserAccountController::class, 'delete']);
     Route::delete('/my-account', [UserControllers\UserAccountController::class, 'destroy']);
 
@@ -297,6 +299,14 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/webhooks/{id}', [ActivityControllers\WebhookController::class, 'update']);
     Route::get('/settings/webhooks/{id}/delete', [ActivityControllers\WebhookController::class, 'delete']);
     Route::delete('/settings/webhooks/{id}', [ActivityControllers\WebhookController::class, 'destroy']);
+
+    // OAuth Clients (admin)
+    Route::get('/settings/oauth-clients', [OAuthControllers\OAuthClientController::class, 'index']);
+    Route::get('/settings/oauth-clients/{id}', [OAuthControllers\OAuthClientController::class, 'show']);
+    Route::put('/settings/oauth-clients/{id}', [OAuthControllers\OAuthClientController::class, 'update']);
+    Route::get('/settings/oauth-clients/{id}/delete', [OAuthControllers\OAuthClientController::class, 'delete']);
+    Route::delete('/settings/oauth-clients/{id}', [OAuthControllers\OAuthClientController::class, 'destroy']);
+    Route::delete('/settings/oauth-clients/{id}/authorization', [OAuthControllers\OAuthClientController::class, 'revokeAuthorization']);
 
     // Sort Rules
     Route::get('/settings/sorting/rules/new', [SortingControllers\SortRuleController::class, 'create']);

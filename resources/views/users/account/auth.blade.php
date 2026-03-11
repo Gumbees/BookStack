@@ -84,4 +84,8 @@
     @if(userCan(\BookStack\Permissions\Permission::AccessApi))
         @include('users.api-tokens.parts.list', ['user' => user(), 'context' => 'my-account'])
     @endif
+
+    @if(\BookStack\OAuth\OAuthService::enabled() && isset($oauthAuthorizations) && count($oauthAuthorizations) > 0)
+        @include('users.oauth-authorizations.parts.list', ['oauthAuthorizations' => $oauthAuthorizations])
+    @endif
 @stop

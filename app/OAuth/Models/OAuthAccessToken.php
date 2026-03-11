@@ -13,6 +13,7 @@ class OAuthAccessToken extends Model
 
     protected $casts = [
         'expires_at' => 'datetime',
+        'last_used_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

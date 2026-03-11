@@ -114,6 +114,30 @@ class OAuthController extends Controller
 
         $user = auth()->user();
 
+        // Check user has API access
+        if (!$user->can(Permission::AccessApi)) {
+            return $this->oauthError('access_denied', 'Your account does not have API access permission');
+        }
+
+        // Instance-approved clients skip the consent screen
+        if ($this->oauthService->isClientInstanceApproved($client)) {
+            $code = $this->oauthService->createAuthCode(
+                $user,
+                $client,
+                $redirectUri,
+                $codeChallenge,
+                $codeChallengeMethod ?: 'S256',
+            );
+
+            $queryParams = ['code' => $code];
+            if (!empty($state)) {
+                $queryParams['state'] = $state;
+            }
+
+            $separator = str_contains($redirectUri, '?') ? '&' : '?';
+            return response('', 302)->header('Location', $redirectUri . $separator . http_build_query($queryParams));
+        }
+
         // Store the OAuth parameters in session for the consent form
         session()->put('oauth_authorize', [
             'client_id' => $clientId,

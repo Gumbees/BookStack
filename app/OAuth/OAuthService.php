@@ -39,12 +39,13 @@ class OAuthService
     /**
      * Register a new dynamic OAuth client.
      */
-    public function registerClient(string $name, ?array $redirectUris = null): OAuthClient
+    public function registerClient(string $name, ?array $redirectUris = null, ?int $createdBy = null): OAuthClient
     {
         $client = new OAuthClient();
         $client->client_id = Str::random(32);
         $client->name = $name;
         $client->redirect_uris = $redirectUris ? json_encode($redirectUris) : null;
+        $client->created_by = $createdBy;
         $client->save();
 
         return $client;
@@ -196,6 +197,7 @@ class OAuthService
 
     /**
      * Look up a user by their OAuth access token.
+     * Updates last_used_at timestamp on successful lookup.
      */
     public function findUserByAccessToken(string $token): ?User
     {
@@ -209,6 +211,9 @@ class OAuthService
         if (!$accessToken) {
             return null;
         }
+
+        $accessToken->last_used_at = Carbon::now();
+        $accessToken->save();
 
         return User::query()->find($accessToken->user_id);
     }
@@ -244,6 +249,107 @@ class OAuthService
             'refresh_token' => $plainRefresh,
             'expires_in' => $accessTtl,
         ];
+    }
+
+    /**
+     * Revoke an OAuth client and all its tokens.
+     */
+    public function revokeClient(OAuthClient $client): void
+    {
+        // Delete all access tokens (cascades to refresh tokens via DB foreign key)
+        $client->accessTokens()->delete();
+
+        // Delete any pending auth codes
+        OAuthAuthCode::query()->where('client_id', $client->id)->delete();
+
+        $client->delete();
+    }
+
+    /**
+     * Revoke a specific user's authorization for a client.
+     * Deletes all access/refresh tokens for that user+client pair.
+     */
+    public function revokeUserAuthorizationForClient(User $user, OAuthClient $client): void
+    {
+        $tokenIds = OAuthAccessToken::query()
+            ->where('client_id', $client->id)
+            ->where('user_id', $user->id)
+            ->pluck('id');
+
+        OAuthRefreshToken::query()->whereIn('access_token_id', $tokenIds)->delete();
+        OAuthAccessToken::query()->whereIn('id', $tokenIds)->delete();
+        OAuthAuthCode::query()
+            ->where('client_id', $client->id)
+            ->where('user_id', $user->id)
+            ->delete();
+    }
+
+    /**
+     * Get all active OAuth authorizations for a specific user.
+     * Returns clients with their latest token activity.
+     */
+    public function getActiveAuthorizationsForUser(User $user): \Illuminate\Support\Collection
+    {
+        return OAuthAccessToken::query()
+            ->where('user_id', $user->id)
+            ->where('expires_at', '>', Carbon::now())
+            ->with('client')
+            ->get()
+            ->groupBy('client_id')
+            ->map(function ($tokens) {
+                $latest = $tokens->sortByDesc('created_at')->first();
+                return (object) [
+                    'client' => $latest->client,
+                    'token_count' => $tokens->count(),
+                    'last_used_at' => $tokens->max('last_used_at'),
+                    'created_at' => $tokens->min('created_at'),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * Get all active authorizations across all users (admin view).
+     * Returns a collection of objects with client, user, and token info.
+     */
+    public function getAllActiveAuthorizations(): \Illuminate\Support\Collection
+    {
+        return OAuthAccessToken::query()
+            ->where('expires_at', '>', Carbon::now())
+            ->with(['client', 'user'])
+            ->get()
+            ->groupBy(fn ($t) => $t->client_id . ':' . $t->user_id)
+            ->map(function ($tokens) {
+                $latest = $tokens->sortByDesc('created_at')->first();
+                return (object) [
+                    'client' => $latest->client,
+                    'user' => $latest->user,
+                    'token_count' => $tokens->count(),
+                    'last_used_at' => $tokens->max('last_used_at'),
+                    'created_at' => $tokens->min('created_at'),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * Check if a client is instance-approved (users skip consent screen).
+     */
+    public function isClientInstanceApproved(OAuthClient $client): bool
+    {
+        return (bool) $client->instance_approved;
+    }
+
+    /**
+     * Get all registered OAuth clients with related data.
+     */
+    public function getAllClients(): \Illuminate\Support\Collection
+    {
+        return OAuthClient::query()
+            ->withCount('accessTokens')
+            ->with('createdByUser')
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
     /**

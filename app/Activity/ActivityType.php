@@ -75,6 +75,10 @@ class ActivityType
     const SORT_RULE_UPDATE = 'sort_rule_update';
     const SORT_RULE_DELETE = 'sort_rule_delete';
 
+    const OAUTH_CLIENT_UPDATE = 'oauth_client_update';
+    const OAUTH_CLIENT_DELETE = 'oauth_client_delete';
+    const OAUTH_AUTHORIZATION_REVOKE = 'oauth_authorization_revoke';
+
     /**
      * Get all the possible values.
      */

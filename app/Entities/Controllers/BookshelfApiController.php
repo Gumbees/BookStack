@@ -2,9 +2,12 @@
 
 namespace BookStack\Entities\Controllers;
 
+use BookStack\Activity\ActivityType;
 use BookStack\Entities\Models\Bookshelf;
+use BookStack\Entities\Queries\BookQueries;
 use BookStack\Entities\Queries\BookshelfQueries;
 use BookStack\Entities\Repos\BookshelfRepo;
+use BookStack\Facades\Activity;
 use BookStack\Http\ApiController;
 use BookStack\Permissions\Permission;
 use Exception;
@@ -17,6 +20,7 @@ class BookshelfApiController extends ApiController
     public function __construct(
         protected BookshelfRepo $bookshelfRepo,
         protected BookshelfQueries $queries,
+        protected BookQueries $bookQueries,
     ) {
     }
 
@@ -107,6 +111,45 @@ class BookshelfApiController extends ApiController
         $this->checkOwnablePermission(Permission::BookshelfDelete, $shelf);
 
         $this->bookshelfRepo->destroy($shelf);
+
+        return response('', 204);
+    }
+
+    /**
+     * Add a book to a shelf.
+     * The book will be appended to the end of the shelf's book list.
+     * If the book is already on the shelf, the request is a no-op and returns success.
+     */
+    public function attachBook(string $id, string $bookId)
+    {
+        $shelf = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);
+
+        $book = $this->bookQueries->findVisibleByIdOrFail(intval($bookId));
+
+        $shelf->appendBook($book);
+        Activity::add(ActivityType::BOOKSHELF_UPDATE, $shelf);
+
+        return response()->json([
+            'message' => 'Book successfully added to shelf.',
+            'shelf_id' => $shelf->id,
+            'book_id' => $book->id,
+        ]);
+    }
+
+    /**
+     * Remove a book from a shelf.
+     * This only detaches the book from the shelf; it does not delete the book.
+     */
+    public function detachBook(string $id, string $bookId)
+    {
+        $shelf = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);
+
+        $book = $this->bookQueries->findVisibleByIdOrFail(intval($bookId));
+
+        $shelf->books()->detach($book->id);
+        Activity::add(ActivityType::BOOKSHELF_UPDATE, $shelf);
 
         return response('', 204);
     }

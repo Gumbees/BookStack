@@ -2,6 +2,7 @@
 
 namespace BookStack\Entities\Controllers;
 
+use BookStack\Activity\ActivityType;
 use BookStack\Api\ApiEntityListFormatter;
 use BookStack\Entities\Models\Book;
 use BookStack\Entities\Models\Chapter;
@@ -11,6 +12,7 @@ use BookStack\Entities\Queries\BookshelfQueries;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Entities\Repos\BookRepo;
 use BookStack\Entities\Tools\BookContents;
+use BookStack\Facades\Activity;
 use BookStack\Http\ApiController;
 use BookStack\Permissions\Permission;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +47,7 @@ class BookApiController extends ApiController
 
     /**
      * Create a new book in the system.
+     * An optional shelf_id can be provided to place the book on a shelf upon creation.
      * The cover image of a book can be set by sending a file via an 'image' property within a 'multipart/form-data' request.
      * If the 'image' property is null then the book cover image will be removed.
      *
@@ -56,6 +59,14 @@ class BookApiController extends ApiController
         $requestData = $this->validate($request, $this->rules()['create']);
 
         $book = $this->bookRepo->create($requestData);
+
+        $shelfId = $request->get('shelf_id');
+        if ($shelfId) {
+            $shelf = $this->shelfQueries->findVisibleByIdOrFail(intval($shelfId));
+            $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);
+            $shelf->appendBook($book);
+            Activity::add(ActivityType::BOOKSHELF_UPDATE, $shelf);
+        }
 
         return response()->json($this->forJsonDisplay($book));
     }
@@ -151,6 +162,7 @@ class BookApiController extends ApiController
                 'tags'                => ['array'],
                 'image'               => array_merge(['nullable'], $this->getImageValidationRules()),
                 'default_template_id' => ['nullable', 'integer'],
+                'shelf_id'            => ['nullable', 'integer'],
             ],
             'update' => [
                 'name'                => ['string', 'min:1', 'max:255'],

@@ -33,3 +33,5 @@ phpstan.neon
 esbuild-meta.json
 .phpactor.json
 /*.zip
+
+.claude/

@@ -17,11 +17,18 @@
     </div>
 
     <main class="content-wrap card">
+        @if ($commentTree->enabled())
+        <div class="page-content-with-gutter"
+             x-data="commentGutter({ canComment: {{ userCan(\BookStack\Permissions\Permission::CommentCreateAll) ? 'true' : 'false' }} })">
+        @endif
         <div component="page-display"
              option:page-display:page-id="{{ $page->id }}"
              class="page-content clearfix">
             @include('pages.parts.page-display')
         </div>
+        @if ($commentTree->enabled())
+        </div>
+        @endif
         @include('pages.parts.pointer', ['page' => $page, 'commentTree' => $commentTree])
     </main>
 

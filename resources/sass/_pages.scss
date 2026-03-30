@@ -308,6 +308,97 @@ body.tox-fullscreen, body.markdown-fullscreen {
   transform: scale(1.15);
 }
 
+// Count badge shown on stacked (multi-comment) markers
+// The marker button is position:absolute, so the badge is positioned relative to it
+.content-comment-marker-badge {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background-color: var(--color-warning);
+  color: #FFF;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 91;
+}
+
+// Comment gutter container
+// Wraps .page-content and provides a right-side lane for comment affordances
+.page-content-with-gutter {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+// The gutter add-button shown on hover over bkmrk elements
+.comment-gutter-add-btn {
+  position: absolute;
+  inset-inline-end: -36px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid;
+  @include mixins.lightDark(border-color, #ddd, #555);
+  @include mixins.lightDark(background-color, #fff, #333);
+  @include mixins.lightDark(color, #888, #aaa);
+  box-shadow: vars.$bs-card;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 89;
+  opacity: 0;
+  transition: opacity ease-in-out 100ms, transform ease-in-out 100ms, color ease-in-out 100ms, border-color ease-in-out 100ms;
+  pointer-events: none;
+  svg {
+    width: 60%;
+    fill: currentColor;
+  }
+  &:not([hidden]) {
+    opacity: 1;
+    pointer-events: all;
+  }
+  &:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    transform: translateY(-50%) scale(1.1);
+  }
+}
+
+// When gutter is active, shift existing markers into the gutter lane
+.page-content-with-gutter .page-content .content-comment-marker {
+  right: calc(-36px - 14px);
+  top: 50%;
+  transform: translateY(-50%) scale(1);
+  transition: transform ease-in-out 120ms;
+}
+.page-content-with-gutter .page-content [id^="bkmrk-"]:hover .content-comment-marker {
+  transform: translateY(-50%) scale(1.15);
+}
+
+// Hide gutter elements on mobile where there's no space
+@include mixins.smaller-than(vars.$bp-m) {
+  .comment-gutter-add-btn {
+    display: none;
+  }
+  .page-content-with-gutter .page-content .content-comment-marker {
+    right: -16px;
+    top: -16px;
+    transform: scale(1);
+    &:hover, .page-content [id^="bkmrk-"]:hover & {
+      transform: scale(1.15);
+    }
+  }
+}
+
 // Page editor sidebar toolbox
 .floating-toolbox {
   @include mixins.lightDark(background-color, #FFF, #222);

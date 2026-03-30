@@ -114,12 +114,24 @@ export class PageCommentReference extends Component {
             this.link.classList.add('outdated');
         }
 
+        const siblingCount = this.countSiblingsForRef(refId);
+        const markerClass = siblingCount > 1
+            ? 'content-comment-marker content-comment-marker-stacked'
+            : 'content-comment-marker';
+
         const marker = el('button', {
             type: 'button',
-            class: 'content-comment-marker',
+            class: markerClass,
             title: this.viewCommentText,
         });
         marker.innerHTML = <string>commentIcon;
+
+        if (siblingCount > 1) {
+            const badge = el('span', {class: 'content-comment-marker-badge'});
+            badge.textContent = String(siblingCount);
+            marker.appendChild(badge);
+        }
+
         marker.addEventListener('click', event => {
             this.showCommentAtMarker(marker);
         });
@@ -170,6 +182,25 @@ export class PageCommentReference extends Component {
         this.markerWrap.style.top = `${relTop}px`;
         this.markerWrap.style.width = `${targetBounds.width}px`;
         this.markerWrap.style.height = `${targetBounds.height}px`;
+    }
+
+    /**
+     * Count all PageCommentReference instances that point to the same element id.
+     * Used to show a count badge when multiple comments reference the same block.
+     */
+    protected countSiblingsForRef(refId: string): number {
+        const allRefs = window.$components.get<PageCommentReference>('page-comment-reference');
+        let count = 0;
+        for (const ref of allRefs) {
+            if (!ref.reference) {
+                continue;
+            }
+            const [id] = ref.reference.split(':');
+            if (id === refId) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public hideMarker() {

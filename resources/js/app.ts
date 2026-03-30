@@ -6,6 +6,7 @@ import {ComponentStore} from './services/components';
 import {baseUrl, importVersioned} from "./services/util";
 import Alpine from 'alpinejs';
 import {scratchNotes} from './components/scratch-notes';
+import {commentGutter} from './components/comment-gutter';
 
 // eslint-disable-next-line no-underscore-dangle
 window.__DEV__ = false;
@@ -28,4 +29,5 @@ window.$components.init();
 // Alpine uses x-data attributes so it does not conflict with the
 // BookStack component system which uses the 'component' attribute.
 Alpine.data('scratchNotes', scratchNotes);
+Alpine.data('commentGutter', commentGutter);
 Alpine.start();

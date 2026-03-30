@@ -20,6 +20,7 @@ import {registerShortcuts} from "./services/shortcuts";
 import {registerNodeResizer} from "./ui/framework/helpers/node-resizer";
 import {registerKeyboardHandling} from "./services/keyboard-handling";
 import {registerAutoLinks} from "./services/auto-links";
+import {registerWikiLinks} from "./services/wiki-links";
 import {contextToolbars, getBasicEditorToolbar, getMainEditorFullToolbar} from "./ui/defaults/toolbars";
 import {modals} from "./ui/defaults/modals";
 import {CodeBlockDecorator} from "./ui/decorators/CodeBlockDecorator";
@@ -69,6 +70,7 @@ export function createPageEditorInstance(container: HTMLElement, htmlContent: st
         registerDropPasteHandling(context),
         registerNodeResizer(context),
         registerAutoLinks(editor),
+        registerWikiLinks(context),
     );
 
     // Register toolbars, modals & decorators

@@ -3,6 +3,7 @@ import {Display} from './display';
 import {Actions} from './actions';
 import {Settings} from './settings';
 import {listenToCommonEvents} from './common-events';
+import {registerMarkdownWikiLinks} from './wiki-links';
 import {init as initCodemirror} from './codemirror';
 import {MarkdownEditorInput} from "./inputs/interface";
 import {CodemirrorInput} from "./inputs/codemirror";
@@ -64,6 +65,7 @@ export async function init(config: MarkdownEditorConfig): Promise<MarkdownEditor
     });
 
     listenToCommonEvents(editor);
+    registerMarkdownWikiLinks(editor);
 
     return editor;
 }

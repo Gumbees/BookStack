@@ -1245,3 +1245,80 @@ details.section-expander {
   border-bottom: 1px solid #DDD;
   @include mixins.lightDark(border-color, #DDD, #000);
 }
+
+// Scratch Notes sidebar panel
+[x-cloak] {
+  display: none !important;
+}
+
+.scratch-notes-panel {
+  border-bottom: 1px solid #DDD;
+  @include mixins.lightDark(border-color, #DDD, #333);
+}
+
+.scratch-notes-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: start;
+
+  h5 {
+    margin: 0;
+  }
+}
+
+.scratch-notes-caret {
+  display: inline-block;
+  font-size: 1rem;
+  @include mixins.lightDark(color, #888, #888);
+  transition: transform ease-in-out 180ms;
+  transform: rotate(0deg);
+
+  &.open {
+    transform: rotate(90deg);
+  }
+}
+
+.scratch-notes-body {
+  padding-block-start: vars.$s;
+  padding-block-end: vars.$s;
+}
+
+.scratch-notes-textarea {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #DDD;
+  @include mixins.lightDark(border-color, #DDD, #444);
+  @include mixins.lightDark(background-color, #fff, #2a2a2a);
+  @include mixins.lightDark(color, #444, #ccc);
+  border-radius: 3px;
+  padding: vars.$xs vars.$s;
+  font-family: var(--font-body);
+  font-size: vars.$fs-m;
+  line-height: 1.5;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: 1px solid var(--color-primary);
+    outline-offset: -1px;
+  }
+
+  &:disabled {
+    @include mixins.lightDark(background-color, #f5f5f5, #222);
+    cursor: not-allowed;
+  }
+}
+
+.scratch-notes-status {
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #888, #666);
+  margin-block-start: vars.$xxs;
+  min-height: 1.4em;
+}

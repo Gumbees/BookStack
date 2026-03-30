@@ -173,6 +173,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/ajax/page/{id}', [EntityControllers\PageController::class, 'getPageAjax']);
     Route::delete('/ajax/page/{id}', [EntityControllers\PageController::class, 'ajaxDestroy']);
 
+    // Scratch notes
+    Route::get('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'show']);
+    Route::put('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'update']);
+
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);
     Route::get('/ajax/tags/suggest/names', [ActivityControllers\TagController::class, 'getNameSuggestions']);

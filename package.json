@@ -52,6 +52,7 @@
     "@ssddanbrown/codemirror-lang-smarty": "^1.0.0",
     "@ssddanbrown/codemirror-lang-twig": "^1.0.0",
     "@types/jest": "^30.0.0",
+    "alpinejs": "^3.15.9",
     "codemirror": "^6.0.2",
     "idb-keyval": "^6.2.2",
     "markdown-it": "^14.1.1",

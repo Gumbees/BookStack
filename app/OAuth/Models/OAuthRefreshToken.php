@@ -9,6 +9,12 @@ class OAuthRefreshToken extends Model
 {
     protected $table = 'oauth_refresh_tokens';
 
+    protected $fillable = [
+        'token',
+        'access_token_id',
+        'expires_at',
+    ];
+
     protected $casts = [
         'expires_at' => 'datetime',
     ];

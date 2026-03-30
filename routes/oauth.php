@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/.well-known/oauth-authorization-server', [OAuthController::class, 'metadata']);
 Route::get('/.well-known/oauth-protected-resource', [OAuthController::class, 'resourceMetadata']);
 
-// Dynamic client registration — no auth required
-Route::post('/oauth/register', [OAuthController::class, 'register']);
+// Dynamic client registration — rate-limited (H-1)
+Route::post('/oauth/register', [OAuthController::class, 'register'])->middleware('throttle:public');
 
 // Authorization — requires authenticated user (web session)
 Route::middleware('auth')->group(function () {
@@ -25,5 +25,5 @@ Route::middleware('auth')->group(function () {
     Route::post('/oauth/authorize', [OAuthController::class, 'authorizeSubmit']);
 });
 
-// Token exchange — no auth required (uses auth codes / refresh tokens)
-Route::post('/oauth/token', [OAuthController::class, 'token']);
+// Token exchange — rate-limited (H-1)
+Route::post('/oauth/token', [OAuthController::class, 'token'])->middleware('throttle:public');

@@ -123,8 +123,14 @@ class OAuthService
             return null;
         }
 
-        // Validate redirect URI
+        // Validate redirect URI against stored value from authorization
         if ($authCode->redirect_uri !== $redirectUri) {
+            return null;
+        }
+
+        // M-3: Defense-in-depth — also validate redirect_uri against the client's registered list
+        $registeredUris = $client->redirect_uris ? json_decode($client->redirect_uris, true) : null;
+        if (!empty($registeredUris) && !in_array($redirectUri, $registeredUris, true)) {
             return null;
         }
 
@@ -309,6 +315,31 @@ class OAuthService
     }
 
     /**
+     * Get active authorizations for a specific client (admin view).
+     * M-4: Queries directly with a where clause rather than loading all authorizations.
+     */
+    public function getActiveAuthorizationsForClient(OAuthClient $client): \Illuminate\Support\Collection
+    {
+        return OAuthAccessToken::query()
+            ->where('client_id', $client->id)
+            ->where('expires_at', '>', Carbon::now())
+            ->with('user')
+            ->get()
+            ->groupBy('user_id')
+            ->map(function ($tokens) use ($client) {
+                $latest = $tokens->sortByDesc('created_at')->first();
+                return (object) [
+                    'client' => $client,
+                    'user' => $latest->user,
+                    'token_count' => $tokens->count(),
+                    'last_used_at' => $tokens->max('last_used_at'),
+                    'created_at' => $tokens->min('created_at'),
+                ];
+            })
+            ->values();
+    }
+
+    /**
      * Get all active authorizations across all users (admin view).
      * Returns a collection of objects with client, user, and token info.
      */
@@ -342,11 +373,12 @@ class OAuthService
 
     /**
      * Get all registered OAuth clients with related data.
+     * M-5: withCount scoped to exclude expired tokens.
      */
     public function getAllClients(): \Illuminate\Support\Collection
     {
         return OAuthClient::query()
-            ->withCount('accessTokens')
+            ->withCount(['accessTokens' => fn ($q) => $q->where('expires_at', '>', now())])
             ->with('createdByUser')
             ->orderBy('created_at', 'desc')
             ->get();

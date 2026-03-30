@@ -39,13 +39,12 @@ class OAuthClientController extends Controller
     public function show(string $id)
     {
         $client = OAuthClient::query()
-            ->withCount('accessTokens')
+            ->withCount(['accessTokens' => fn ($q) => $q->where('expires_at', '>', now())])
             ->with('createdByUser')
             ->findOrFail($id);
 
-        $authorizations = $this->oauthService->getAllActiveAuthorizations()
-            ->filter(fn ($auth) => $auth->client->id === $client->id)
-            ->values();
+        // M-4: Query authorizations directly for this client instead of loading all
+        $authorizations = $this->oauthService->getActiveAuthorizationsForClient($client);
 
         $this->setPageTitle(trans('settings.oauth_client') . ' - ' . $client->name);
 

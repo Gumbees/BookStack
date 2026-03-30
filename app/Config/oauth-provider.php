@@ -22,4 +22,8 @@ return [
     // Default: 90 days.
     'refresh_token_ttl' => env('OAUTH_REFRESH_TOKEN_TTL', 7776000),
 
+    // Allow dynamic client registration (RFC 7591) via POST /oauth/register.
+    // Disabled by default. Enable only if clients need to self-register.
+    'dynamic_registration' => env('OAUTH_DYNAMIC_REGISTRATION', false),
+
 ];

@@ -8,6 +8,7 @@ use BookStack\Permissions\Permission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Validator;
 
 class OAuthController extends Controller
 {
@@ -51,13 +52,47 @@ class OAuthController extends Controller
 
     /**
      * Dynamic Client Registration (RFC 7591).
+     * Gated by OAUTH_DYNAMIC_REGISTRATION env setting (default: disabled).
      */
     public function register(Request $request): JsonResponse
     {
-        $data = $request->json()->all();
-        $clientName = $data['client_name'] ?? 'Unnamed Client';
-        $redirectUris = $data['redirect_uris'] ?? null;
+        // H-2: Gate dynamic client registration
+        if (!config('oauth-provider.dynamic_registration', false)) {
+            return response()->json([
+                'error' => 'registration_not_supported',
+                'error_description' => 'Dynamic client registration is not enabled on this server',
+            ], 403);
+        }
 
+        // H-2: Input validation
+        $data = $request->json()->all();
+
+        $validator = Validator::make($data, [
+            'client_name' => ['required', 'string', 'max:255'],
+            'redirect_uris' => ['required', 'array', 'max:10'],
+            'redirect_uris.*' => ['required', 'string', 'max:2000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'invalid_client_metadata',
+                'error_description' => $validator->errors()->first(),
+            ], 400);
+        }
+
+        // H-3: Validate redirect_uri schemes
+        $redirectUris = $data['redirect_uris'];
+        foreach ($redirectUris as $uri) {
+            $uriError = $this->validateRedirectUriScheme($uri);
+            if ($uriError) {
+                return response()->json([
+                    'error' => 'invalid_redirect_uri',
+                    'error_description' => $uriError,
+                ], 400);
+            }
+        }
+
+        $clientName = $data['client_name'];
         $client = $this->oauthService->registerClient($clientName, $redirectUris);
 
         $now = now()->timestamp;
@@ -68,14 +103,10 @@ class OAuthController extends Controller
             'token_endpoint_auth_method' => 'none',
             'grant_types' => ['authorization_code', 'refresh_token'],
             'response_types' => ['code'],
+            'redirect_uris' => $redirectUris,
+            'client_name' => $clientName,
         ];
 
-        if (isset($data['redirect_uris'])) {
-            $response['redirect_uris'] = $data['redirect_uris'];
-        }
-        if (isset($data['client_name'])) {
-            $response['client_name'] = $data['client_name'];
-        }
         if (isset($data['scope'])) {
             $response['scope'] = $data['scope'];
         }
@@ -107,9 +138,30 @@ class OAuthController extends Controller
             return $this->oauthError('invalid_request', 'code_challenge is required (PKCE)');
         }
 
+        // M-2: Reject unsupported code_challenge_method early
+        if ($codeChallengeMethod !== null && $codeChallengeMethod !== 'S256') {
+            return $this->oauthError('invalid_request', 'Only code_challenge_method=S256 is supported');
+        }
+
+        // M-1: Validate code_challenge format (base64url, exactly 43 chars per RFC 7636)
+        if (!preg_match('/^[A-Za-z0-9\-._~]{43}$/', $codeChallenge)) {
+            return $this->oauthError('invalid_request', 'code_challenge must be exactly 43 base64url characters');
+        }
+
+        // M-7: Limit state parameter size
+        if ($state !== null && strlen($state) > 512) {
+            return $this->oauthError('invalid_request', 'state parameter must not exceed 512 characters');
+        }
+
         $client = $this->oauthService->findClient($clientId);
         if (!$client) {
             return $this->oauthError('invalid_client', 'Unknown client_id');
+        }
+
+        // C-1: Validate redirect_uri against the client's registered list
+        $registeredUris = $client->redirect_uris ? json_decode($client->redirect_uris, true) : null;
+        if (empty($registeredUris) || !in_array($redirectUri, $registeredUris, true)) {
+            return $this->oauthError('invalid_request', 'redirect_uri does not match any registered URI for this client');
         }
 
         $user = auth()->user();
@@ -172,20 +224,30 @@ class OAuthController extends Controller
             return $this->oauthError('access_denied', 'Your account does not have API access permission');
         }
 
-        // User denied
+        // User denied — L-1: only include state if it was actually provided
         if ($request->input('action') === 'deny') {
             $separator = str_contains($params['redirect_uri'], '?') ? '&' : '?';
-            $redirectUrl = $params['redirect_uri'] . $separator . http_build_query([
+            $denyParams = [
                 'error' => 'access_denied',
                 'error_description' => 'The user denied the authorization request',
-                'state' => $params['state'] ?? '',
-            ]);
+            ];
+            if (!empty($params['state'])) {
+                $denyParams['state'] = $params['state'];
+            }
+            $redirectUrl = $params['redirect_uri'] . $separator . http_build_query($denyParams);
             return response('', 302)->header('Location', $redirectUrl);
         }
 
         $client = $this->oauthService->findClient($params['client_id']);
         if (!$client) {
             return $this->oauthError('invalid_client', 'Client no longer exists');
+        }
+
+        // C-2: Re-validate redirect_uri against the client's registered list (session was validated
+        // at authorize time, but defense-in-depth in case client was updated between the two requests)
+        $registeredUris = $client->redirect_uris ? json_decode($client->redirect_uris, true) : null;
+        if (empty($registeredUris) || !in_array($params['redirect_uri'], $registeredUris, true)) {
+            return $this->oauthError('invalid_request', 'redirect_uri does not match any registered URI for this client');
         }
 
         $code = $this->oauthService->createAuthCode(
@@ -281,6 +343,37 @@ class OAuthController extends Controller
             'expires_in' => $tokens['expires_in'],
             'refresh_token' => $tokens['refresh_token'],
         ])->header('Cache-Control', 'no-store')->header('Pragma', 'no-cache');
+    }
+
+    /**
+     * Validate that a redirect URI has an acceptable scheme.
+     * Allows https:// for all hosts, and http:// only for localhost / 127.0.0.1 (RFC 8252).
+     * Returns an error string on failure, or null on success.
+     */
+    protected function validateRedirectUriScheme(string $uri): ?string
+    {
+        $parsed = parse_url($uri);
+
+        if ($parsed === false || empty($parsed['scheme']) || empty($parsed['host'])) {
+            return "'{$uri}' is not a valid URL";
+        }
+
+        $scheme = strtolower($parsed['scheme']);
+        $host = strtolower($parsed['host']);
+
+        if (in_array($scheme, ['javascript', 'data', 'vbscript'], true)) {
+            return "URI scheme '{$scheme}' is not permitted";
+        }
+
+        if ($scheme === 'https') {
+            return null;
+        }
+
+        if ($scheme === 'http' && in_array($host, ['localhost', '127.0.0.1'], true)) {
+            return null;
+        }
+
+        return "redirect_uri must use https (http is only allowed for localhost/127.0.0.1)";
     }
 
     protected function oauthError(string $error, string $description, int $status = 400): Response

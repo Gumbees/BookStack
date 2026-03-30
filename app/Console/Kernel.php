@@ -16,7 +16,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        //
+        // M-6: Clean up expired OAuth tokens and authorization codes daily
+        $schedule->command('bookstack:cleanup-oauth')->daily();
     }
 
     /**

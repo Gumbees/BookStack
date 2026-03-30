@@ -6,6 +6,7 @@ use BookStack\Activity\ActivityType;
 use BookStack\Http\Controller;
 use BookStack\OAuth\Models\OAuthClient;
 use BookStack\OAuth\OAuthService;
+use Closure;
 use Illuminate\Http\Request;
 
 class UserOAuthController extends Controller
@@ -13,6 +14,11 @@ class UserOAuthController extends Controller
     public function __construct(
         protected OAuthService $oauthService,
     ) {
+        // L-2: Prevent guest access, matching the pattern from UserAccountController
+        $this->middleware(function (Request $request, Closure $next) {
+            $this->preventGuestAccess();
+            return $next($request);
+        });
     }
 
     /**

@@ -99,6 +99,18 @@ Big thanks to these companies for supporting the project.
 </tr>
 </tbody></table>
 
+## 🍴 Fork Enhancements
+
+This fork adds the following features on top of upstream BookStack:
+
+- **[Collaborative editing](dev/docs/collaborative-editing.md)** ... real-time multi-user page editing powered by a Rust/Yrs CRDT sidecar and a WASM client. Opt-in via `COLLAB_ENABLED`.
+- **[Notification system](dev/docs/notification-system.md)** ... in-app notification bell, email notifications, and a follow/watch system for shelves, books, chapters, and pages. Configurable per-user and globally by admins at `/settings/notifications`.
+- **[@mentions](dev/docs/notification-system.md#mentions)** ... mention users by `@Name` in comments and scratch notes to trigger in-app notifications.
+- **[Wiki links and backlinks](dev/docs/wiki-links-and-backlinks.md)** ... type `[[` in either editor to search and link to any entity. Backlinks sidebar shows linked and unlinked mentions for every page.
+- **[Scratch notes](dev/docs/scratch-notes.md)** ... per-page collaborative notes with attribution. Visible to anyone with view access; writable by users with edit access.
+- **[Private notebooks](dev/docs/private-notebooks.md)** ... owner-only books that bypass joint permissions. Auto-created at `/my-notebook`.
+- **OAuth dynamic client registration** ... RFC 7591 endpoint at `/oauth/register`. Disabled by default; enable with `OAUTH_DYNAMIC_REGISTRATION=true`.
+
 ## 🛠️ Development & Testing
 
 Please see our [development docs](dev/docs/development.md) for full details regarding work on the BookStack source code.

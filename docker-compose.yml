@@ -46,6 +46,18 @@ services:
     volumes:
       - ./:/app
     entrypoint: /app/dev/docker/entrypoint.node.sh
+  # collab: Real-time collaborative editing sidecar (Rust/Yrs CRDT).
+  # This service is optional. It is only needed when COLLAB_ENABLED=true in the app.
+  #
+  # Both containers must share the same COLLAB_JWT_SECRET. Set it in your .env file.
+  # The app container uses COLLAB_SERVER_URL to tell the browser where to connect:
+  #   COLLAB_SERVER_URL=ws://localhost:${COLLAB_PORT:-7700}  (dev)
+  #   COLLAB_SERVER_URL=wss://collab.example.com             (production, behind TLS proxy)
+  #
+  # Documents are stored in memory. Restarting this container drops all in-progress
+  # collaborative sessions; clients reconnect automatically.
+  #
+  # See dev/docs/collaborative-editing.md for full configuration details.
   collab:
     build:
       context: .

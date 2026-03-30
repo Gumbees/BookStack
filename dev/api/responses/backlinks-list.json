@@ -1,0 +1,29 @@
+{
+	"linked": [
+		{
+			"id": 10,
+			"type": "page",
+			"name": "Getting Started",
+			"url": "/books/docs/page/getting-started",
+			"excerpt": "...see the My Page article for more details on configuration..."
+		},
+		{
+			"id": 15,
+			"type": "page",
+			"name": "Advanced Setup",
+			"url": "/books/docs/page/advanced-setup",
+			"excerpt": "...this builds on the concepts described in My Page..."
+		}
+	],
+	"unlinked": [
+		{
+			"id": 22,
+			"type": "page",
+			"name": "Release Notes",
+			"url": "/books/docs/page/release-notes",
+			"excerpt": "...My Page was updated to reflect the new behaviour..."
+		}
+	],
+	"linked_count": 2,
+	"unlinked_count": 1
+}

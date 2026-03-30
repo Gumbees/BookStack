@@ -1,0 +1,35 @@
+{
+	"data": [
+		{
+			"id": 1,
+			"type": "page_update",
+			"data": {
+				"title": "My Page",
+				"message": "Jane Smith updated the page.",
+				"link": "/books/my-book/page/my-page",
+				"entity_id": 42,
+				"entity_type": "page",
+				"triggered_by_id": 3,
+				"triggered_by_name": "Jane Smith"
+			},
+			"read": false,
+			"created_at": "2026-03-30T12:00:00+00:00"
+		},
+		{
+			"id": 2,
+			"type": "scratch_note_mention",
+			"data": {
+				"title": "Another Page",
+				"message": "John Doe mentioned you in a scratch note.",
+				"link": "/books/my-book/page/another-page",
+				"entity_id": 55,
+				"entity_type": "page",
+				"triggered_by_id": 5,
+				"triggered_by_name": "John Doe"
+			},
+			"read": true,
+			"created_at": "2026-03-29T08:30:00+00:00"
+		}
+	],
+	"total": 42
+}

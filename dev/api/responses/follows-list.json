@@ -1,0 +1,25 @@
+{
+	"data": [
+		{
+			"id": 1,
+			"entity_type": "page",
+			"entity_id": 42,
+			"entity_name": "My Page",
+			"entity_url": "/books/my-book/page/my-page",
+			"level": 2,
+			"level_label": "updates",
+			"created_at": "2026-03-30T12:00:00+00:00"
+		},
+		{
+			"id": 2,
+			"entity_type": "book",
+			"entity_id": 7,
+			"entity_name": "My Book",
+			"entity_url": "/books/my-book",
+			"level": 3,
+			"level_label": "comments",
+			"created_at": "2026-03-28T09:15:00+00:00"
+		}
+	],
+	"total": 2
+}

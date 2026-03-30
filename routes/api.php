@@ -12,6 +12,7 @@ use BookStack\App\SystemApiController;
 use BookStack\Entities\Controllers as EntityControllers;
 use BookStack\Exports\Controllers as ExportControllers;
 use BookStack\Permissions\ContentPermissionApiController;
+use BookStack\References\BacklinkApiController;
 use BookStack\Search\SearchApiController;
 use BookStack\Uploads\Controllers\AttachmentApiController;
 use BookStack\Uploads\Controllers\ImageGalleryApiController;
@@ -27,6 +28,10 @@ Route::get('pages/{id}', [EntityControllers\PageApiController::class, 'read']);
 Route::put('pages/{id}', [EntityControllers\PageApiController::class, 'update']);
 Route::delete('pages/{id}', [EntityControllers\PageApiController::class, 'delete']);
 Route::get('pages/{id}/export/html', [ExportControllers\PageExportApiController::class, 'exportHtml']);
+Route::get('pages/{id}/scratch-notes', [ActivityControllers\ScratchNoteApiController::class, 'list']);
+Route::post('pages/{id}/scratch-notes', [ActivityControllers\ScratchNoteApiController::class, 'create']);
+Route::put('pages/{id}/scratch-notes/{noteId}', [ActivityControllers\ScratchNoteApiController::class, 'update']);
+Route::delete('pages/{id}/scratch-notes/{noteId}', [ActivityControllers\ScratchNoteApiController::class, 'destroy']);
 Route::get('pages/{id}/export/pdf', [ExportControllers\PageExportApiController::class, 'exportPdf']);
 Route::get('pages/{id}/export/plaintext', [ExportControllers\PageExportApiController::class, 'exportPlainText']);
 Route::get('pages/{id}/export/markdown', [ExportControllers\PageExportApiController::class, 'exportMarkdown']);
@@ -72,6 +77,11 @@ Route::delete('attachments/{id}', [AttachmentApiController::class, 'delete']);
 
 Route::get('audit-log', [ActivityControllers\AuditLogApiController::class, 'list']);
 
+Route::get('follows', [ActivityControllers\FollowApiController::class, 'list']);
+Route::get('follows/{type}/{id}', [ActivityControllers\FollowApiController::class, 'read']);
+Route::put('follows/{type}/{id}', [ActivityControllers\FollowApiController::class, 'update']);
+Route::delete('follows/{type}/{id}', [ActivityControllers\FollowApiController::class, 'destroy']);
+
 Route::get('comments', [ActivityControllers\CommentApiController::class, 'list']);
 Route::post('comments', [ActivityControllers\CommentApiController::class, 'create']);
 Route::get('comments/{id}', [ActivityControllers\CommentApiController::class, 'read']);
@@ -91,6 +101,12 @@ Route::get('image-gallery/{id}/data', [ImageGalleryApiController::class, 'readDa
 Route::put('image-gallery/{id}', [ImageGalleryApiController::class, 'update']);
 Route::delete('image-gallery/{id}', [ImageGalleryApiController::class, 'delete']);
 
+Route::get('notifications', [ActivityControllers\NotificationApiController::class, 'list']);
+Route::get('notifications/unread-count', [ActivityControllers\NotificationApiController::class, 'unreadCount']);
+Route::put('notifications/{id}/read', [ActivityControllers\NotificationApiController::class, 'markAsRead']);
+Route::post('notifications/mark-all-read', [ActivityControllers\NotificationApiController::class, 'markAllAsRead']);
+Route::delete('notifications/{id}', [ActivityControllers\NotificationApiController::class, 'destroy']);
+
 Route::get('imports', [ExportControllers\ImportApiController::class, 'list']);
 Route::post('imports', [ExportControllers\ImportApiController::class, 'create']);
 Route::get('imports/{id}', [ExportControllers\ImportApiController::class, 'read']);
@@ -108,6 +124,9 @@ Route::put('roles/{id}', [RoleApiController::class, 'update']);
 Route::delete('roles/{id}', [RoleApiController::class, 'delete']);
 
 Route::get('search', [SearchApiController::class, 'all']);
+
+Route::get('{type}/{id}/backlinks', [BacklinkApiController::class, 'show'])
+    ->where('type', 'page|chapter|book|shelf|bookshelf');
 
 Route::get('system', [SystemApiController::class, 'read']);
 

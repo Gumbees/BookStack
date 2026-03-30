@@ -34,7 +34,7 @@ RUN npm run production 2>&1 | grep -v "^npm warn" || true
 # ---------------------------------------------------------------------------
 # Stage 2: WASM builder
 # ---------------------------------------------------------------------------
-FROM rust:1.85-bookworm AS wasm-builder
+FROM rust:1.88-bookworm AS wasm-builder
 
 # Install wasm-pack
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh

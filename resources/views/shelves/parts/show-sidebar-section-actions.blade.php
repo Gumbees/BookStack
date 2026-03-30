@@ -39,5 +39,12 @@
             @include('entities.favourite-action', ['entity' => $shelf])
         @endif
 
+        @if(isset($watchOptions))
+            @if($watchOptions->canWatch())
+                <hr class="primary-background">
+                @include('entities.follow-button', ['entity' => $shelf, 'watchOptions' => $watchOptions])
+            @endif
+        @endif
+
     </div>
 </div>

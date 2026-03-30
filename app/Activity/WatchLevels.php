@@ -2,7 +2,6 @@
 
 namespace BookStack\Activity;
 
-use BookStack\Entities\Models\Bookshelf;
 use BookStack\Entities\Models\Entity;
 use BookStack\Entities\Models\Page;
 
@@ -58,8 +57,6 @@ class WatchLevels
 
         if ($entity instanceof Page) {
             unset($options['new']);
-        } elseif ($entity instanceof Bookshelf) {
-            return [];
         }
 
         return $options;

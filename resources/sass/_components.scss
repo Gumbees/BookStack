@@ -1599,3 +1599,155 @@ details.section-expander {
     }
   }
 }
+
+// Follow button
+.follow-button-wrap {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.follow-button {
+  display: flex;
+  align-items: center;
+  gap: vars.$xs;
+  width: 100%;
+  padding: vars.$xs vars.$s;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  font-size: vars.$fs-m;
+  font-weight: 600;
+  transition: background-color 80ms ease, border-color 80ms ease;
+  @include mixins.lightDark(background-color, #f0f4ff, #1e2a42);
+  @include mixins.lightDark(border-color, #c5d3f5, #3b4f7a);
+  @include mixins.lightDark(color, #3460dc, #7ca2f8);
+
+  &:hover {
+    @include mixins.lightDark(background-color, #dce8ff, #253456);
+    @include mixins.lightDark(border-color, #7ca2f8, #5b80d8);
+  }
+
+  &.following {
+    @include mixins.lightDark(background-color, #e6f4ea, #1a3321);
+    @include mixins.lightDark(border-color, #8bcf9b, #2d6641);
+    @include mixins.lightDark(color, #1e7e34, #5dc878);
+
+    &:hover {
+      @include mixins.lightDark(background-color, #d0ecda, #1f3d28);
+    }
+  }
+
+  &.ignoring {
+    @include mixins.lightDark(background-color, #fdf3e7, #3d2e15);
+    @include mixins.lightDark(border-color, #f0b87a, #8c5e20);
+    @include mixins.lightDark(color, #b45309, #e0a44e);
+  }
+
+  &.saving {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 1.2em;
+    height: 1.2em;
+    fill: currentColor;
+    flex-shrink: 0;
+  }
+}
+
+.follow-button-label {
+  flex: 1;
+  text-align: start;
+}
+
+.follow-button-caret {
+  svg {
+    width: 0.85em;
+    height: 0.85em;
+    fill: currentColor;
+    opacity: 0.7;
+  }
+}
+
+.follow-dropdown {
+  position: absolute;
+  inset-inline-start: 0;
+  top: calc(100% + 4px);
+  min-width: 200px;
+  z-index: 100;
+  border-radius: 4px;
+  box-shadow: vars.$bs-large;
+  overflow: hidden;
+  @include mixins.lightDark(background-color, #fff, #2a2a2a);
+  @include mixins.lightDark(border, 1px solid #e0e0e0, 1px solid #444);
+}
+
+.follow-dropdown-header {
+  padding: vars.$xs vars.$s;
+  font-size: vars.$fs-s;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @include mixins.lightDark(color, #888, #999);
+  @include mixins.lightDark(border-bottom, 1px solid #eee, 1px solid #444);
+}
+
+.follow-level-option {
+  display: flex;
+  align-items: center;
+  gap: vars.$xs;
+  width: 100%;
+  padding: vars.$xs vars.$s;
+  cursor: pointer;
+  font-size: vars.$fs-m;
+  text-align: start;
+  background: none;
+  border: none;
+  @include mixins.lightDark(color, #333, #ccc);
+
+  &:hover {
+    @include mixins.lightDark(background-color, #f5f5f5, #333);
+  }
+}
+
+.follow-level-check {
+  width: 1.2em;
+  flex-shrink: 0;
+  svg {
+    width: 1em;
+    height: 1em;
+    fill: currentColor;
+    @include mixins.lightDark(color, #1e7e34, #5dc878);
+  }
+}
+
+.follow-unfollow-option {
+  @include mixins.lightDark(color, #c0392b, #e57373);
+  &:hover {
+    @include mixins.lightDark(background-color, #fdf2f2, #3d2020);
+  }
+}
+
+.follow-dropdown-divider {
+  margin: vars.$xxs 0;
+  @include mixins.lightDark(border-color, #eee, #444);
+}
+
+.follow-dropdown-footer-link {
+  display: block;
+  padding: vars.$xs vars.$s;
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #888, #999);
+  @include mixins.lightDark(border-top, 1px solid #eee, 1px solid #444);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

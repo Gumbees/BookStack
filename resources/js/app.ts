@@ -12,6 +12,7 @@ import {collabPresence} from './components/collab-presence';
 import {backlinksPanel} from './components/backlinks-panel';
 import {notificationBell} from './components/notification-bell';
 import {notificationList} from './components/notification-list';
+import {followButton} from './components/follow-button';
 
 // eslint-disable-next-line no-underscore-dangle
 window.__DEV__ = false;
@@ -40,4 +41,5 @@ Alpine.data('collabPresence', collabPresence);
 Alpine.data('backlinksPanel', backlinksPanel);
 Alpine.data('notificationBell', notificationBell);
 Alpine.data('notificationList', notificationList);
+Alpine.data('followButton', followButton);
 Alpine.start();

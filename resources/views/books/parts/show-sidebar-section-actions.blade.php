@@ -48,11 +48,11 @@
 
         <hr class="primary-background">
 
-        @if($watchOptions->canWatch() && !$watchOptions->isWatching())
-            @include('entities.watch-action', ['entity' => $book])
-        @endif
         @if(!user()->isGuest())
             @include('entities.favourite-action', ['entity' => $book])
+        @endif
+        @if($watchOptions->canWatch())
+            @include('entities.follow-button', ['entity' => $book, 'watchOptions' => $watchOptions])
         @endif
         @if(userCan(\BookStack\Permissions\Permission::ContentExport))
             @include('entities.export-menu', ['entity' => $book])

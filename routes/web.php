@@ -227,6 +227,10 @@ Route::middleware('auth')->group(function () {
     // Watching
     Route::put('/watching/update', [ActivityControllers\WatchController::class, 'update']);
 
+    // Follow (AJAX watch management for all entity types including shelves)
+    Route::put('/ajax/follow/{type}/{id}', [ActivityControllers\FollowController::class, 'update']);
+    Route::delete('/ajax/follow/{type}/{id}', [ActivityControllers\FollowController::class, 'destroy']);
+
     // In-app notifications
     Route::get('/notifications', [ActivityControllers\NotificationController::class, 'index']);
     Route::get('/ajax/notifications', [ActivityControllers\NotificationController::class, 'list']);

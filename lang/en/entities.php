@@ -475,4 +475,13 @@ return [
     'watch_detail_parent_book_ignore' => 'Ignoring via parent book',
     'watch_detail_parent_chapter' => 'Watching via parent chapter',
     'watch_detail_parent_chapter_ignore' => 'Ignoring via parent chapter',
+    'watch_detail_parent_bookshelf' => 'Following via parent shelf',
+    'watch_detail_parent_bookshelf_ignore' => 'Ignoring via parent shelf',
+
+    // Follow System
+    'follow' => 'Follow',
+    'following' => 'Following',
+    'unfollow' => 'Unfollow',
+    'follow_not_following' => 'Not following',
+    'follow_level_label' => 'Notification level',
 ];

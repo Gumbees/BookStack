@@ -70,12 +70,12 @@
 
 @section('left')
     @include('shelves.parts.show-sidebar-section-tags', ['shelf' => $shelf])
-    @include('shelves.parts.show-sidebar-section-details', ['shelf' => $shelf])
+    @include('shelves.parts.show-sidebar-section-details', ['shelf' => $shelf, 'watchOptions' => $watchOptions])
     @include('shelves.parts.show-sidebar-section-activity', ['activity' => $activity])
 @stop
 
 @section('right')
-    @include('shelves.parts.show-sidebar-section-actions', ['shelf' => $shelf, 'view' => $view])
+    @include('shelves.parts.show-sidebar-section-actions', ['shelf' => $shelf, 'view' => $view, 'watchOptions' => $watchOptions])
 @stop
 
 

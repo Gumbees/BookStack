@@ -27,8 +27,9 @@ return [
     'notifications_opt_comment_replies' => 'Notify upon replies to my comments',
     'notifications_save' => 'Save Preferences',
     'notifications_update_success' => 'Notification preferences have been updated!',
-    'notifications_watched' => 'Watched & Ignored Items',
-    'notifications_watched_desc' => 'Below are the items that have custom watch preferences applied. To update your preferences for these, view the item then find the watch options in the sidebar.',
+    'notifications_watched' => 'Followed & Watched Items',
+    'notifications_watched_desc' => 'Below are the items you are following or watching. To change the notification level for an item, visit it and use the Follow button in the sidebar.',
+    'notifications_following_unfollow' => 'Unfollow',
 
     'auth' => 'Access & Security',
     'auth_change_password' => 'Change Password',

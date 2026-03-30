@@ -4,6 +4,7 @@ namespace BookStack\Activity\Tools;
 
 use BookStack\Activity\Models\Watch;
 use BookStack\Activity\WatchLevels;
+use BookStack\Entities\Models\Book;
 use BookStack\Entities\Models\BookChild;
 use BookStack\Entities\Models\Entity;
 use BookStack\Entities\Models\Page;
@@ -49,6 +50,10 @@ class UserEntityWatchOptions
             return new WatchedParentDetails('book', $watchMap['book']);
         }
 
+        if (isset($watchMap['bookshelf'])) {
+            return new WatchedParentDetails('bookshelf', $watchMap['bookshelf']);
+        }
+
         return null;
     }
 
@@ -82,6 +87,21 @@ class UserEntityWatchOptions
             $entities[] = $this->entity->chapter;
         }
 
+        // Include shelves that contain the relevant book so shelf-level follows
+        // appear as a watched parent in the UI.
+        $book = null;
+        if ($this->entity instanceof Book) {
+            $book = $this->entity;
+        } elseif ($this->entity instanceof BookChild) {
+            $book = $this->entity->book;
+        }
+
+        if ($book) {
+            foreach ($book->shelves()->get() as $shelf) {
+                $entities[] = $shelf;
+            }
+        }
+
         $query = Watch::query()
             ->where('user_id', '=', $this->user->id)
             ->where(function (Builder $subQuery) use ($entities) {
@@ -93,14 +113,30 @@ class UserEntityWatchOptions
                 }
             });
 
-        $this->watchMap = $query->get(['watchable_type', 'level'])
-            ->pluck('level', 'watchable_type')
-            ->toArray();
+        // For shelves we want to keep only the highest-level (most specific) match per type.
+        // The watchMap is keyed by watchable_type, so shelf watches are stored under 'bookshelf'.
+        // If a book has multiple shelves with different watch levels, we take the highest level.
+        $results = $query->get(['watchable_type', 'watchable_id', 'level']);
+
+        $watchMap = [];
+        foreach ($results as $result) {
+            $type = $result->watchable_type;
+            // For shelves, keep the maximum level across all parent shelves
+            if ($type === 'bookshelf') {
+                if (!isset($watchMap[$type]) || $result->level > $watchMap[$type]) {
+                    $watchMap[$type] = $result->level;
+                }
+            } else {
+                $watchMap[$type] = $result->level;
+            }
+        }
+
+        $this->watchMap = $watchMap;
 
         return $this->watchMap;
     }
 
-    protected function getWatchLevelValue()
+    public function getWatchLevelValue(): int
     {
         return $this->getWatchMap()[$this->entity->getMorphClass()] ?? WatchLevels::DEFAULT;
     }

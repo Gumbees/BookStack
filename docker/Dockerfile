@@ -56,7 +56,7 @@ RUN mkdir -p public/dist && \
 # ---------------------------------------------------------------------------
 # Stage 3: Final image
 # ---------------------------------------------------------------------------
-FROM lscr.io/linuxserver/bookstack:25.12
+FROM lscr.io/linuxserver/bookstack:25.12.8
 
 # Overlay our fork's PHP/view/route/migration files
 COPY app/       /app/www/app/

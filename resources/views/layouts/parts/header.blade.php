@@ -20,6 +20,9 @@
         <div class="links text-center">
             @include('layouts.parts.header-links')
         </div>
+        @if(!user()->isGuest() && user()->can(\BookStack\Permissions\Permission::ReceiveNotifications) && setting('notifications.in_app_enabled', true))
+            @include('layouts.parts.header-notification-bell')
+        @endif
         @if(!user()->isGuest())
             @include('layouts.parts.header-user-menu', ['user' => user()])
         @endif

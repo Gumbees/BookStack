@@ -1520,3 +1520,82 @@ details.section-expander {
   padding: 0 1px;
   font-style: normal;
 }
+
+// Notification item rows (used in dropdown and full page)
+.notification-item {
+  padding: vars.$s vars.$m;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  @include mixins.lightDark(border-bottom-color, #f0f0f0, #3a3a3a);
+  transition: background-color 120ms ease-in-out;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    @include mixins.lightDark(background-color, #f7fafc, #3a3a3a);
+  }
+
+  &:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  &.unread {
+    @include mixins.lightDark(background-color, #ebf8ff, #1a2a3a);
+    font-weight: 600;
+    border-inline-start: 3px solid var(--color-primary);
+
+    .notification-item-title,
+    .notification-item-message {
+      @include mixins.lightDark(color, #2d3748, #e2e8f0);
+    }
+  }
+
+  .notification-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .notification-item-title {
+    font-size: vars.$fs-m;
+    @include mixins.lightDark(color, #2d3748, #e2e8f0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+
+  .notification-item-message {
+    font-size: vars.$fs-s;
+    @include mixins.lightDark(color, #718096, #a0aec0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+
+  .notification-item-time {
+    font-size: vars.$fs-s;
+    @include mixins.lightDark(color, #a0aec0, #718096);
+  }
+}
+
+// Full page notifications list
+.notification-page {
+  .item-list-row.notification-item {
+    padding: vars.$m;
+
+    .notification-item-title {
+      max-width: none;
+      white-space: normal;
+    }
+
+    .notification-item-message {
+      max-width: none;
+      white-space: normal;
+    }
+  }
+}

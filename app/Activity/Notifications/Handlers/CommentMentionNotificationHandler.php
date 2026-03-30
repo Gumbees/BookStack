@@ -23,6 +23,11 @@ class CommentMentionNotificationHandler extends BaseNotificationHandler
             throw new \InvalidArgumentException("Detail for comment mention notifications must be a comment on a page");
         }
 
+        // Respect admin global mention toggle
+        if (!setting('notifications.mention_enabled', true)) {
+            return;
+        }
+
         /** @var Page $page */
         $page = $detail->entity;
 

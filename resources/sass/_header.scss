@@ -361,3 +361,101 @@ header .search-box.search-active:focus-within {
   display: inline-block;
   padding: vars.$s;
 }
+
+// Notification bell
+.notification-bell-wrapper {
+  display: inline-flex;
+  align-items: center;
+  padding-inline-start: vars.$m;
+
+  .relative {
+    position: relative;
+  }
+}
+
+.notification-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: vars.$s;
+  border-radius: 3px;
+  color: #FFF;
+  background: none;
+  border: none;
+  gap: vars.$xxs;
+
+  svg {
+    margin-inline-end: 0;
+    font-size: 20px;
+  }
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.notification-badge {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: 0;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background-color: #e53e3e;
+  color: #FFF;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+.notification-dropdown {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + vars.$xs);
+  width: 320px;
+  border-radius: 4px;
+  box-shadow: vars.$bs-hover;
+  z-index: 100;
+  overflow: hidden;
+  @include mixins.lightDark(background-color, #fff, #333);
+  @include mixins.lightDark(border, 1px solid #e2e8f0, 1px solid #444);
+
+  .notification-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: vars.$s vars.$m;
+    border-bottom: 1px solid #e2e8f0;
+    @include mixins.lightDark(border-bottom-color, #e2e8f0, #444);
+    @include mixins.lightDark(color, #333, #ddd);
+  }
+
+  .notification-dropdown-footer {
+    padding: vars.$s vars.$m;
+    border-top: 1px solid #e2e8f0;
+    @include mixins.lightDark(border-top-color, #e2e8f0, #444);
+    text-align: center;
+    @include mixins.lightDark(color, #666, #aaa);
+  }
+
+  .notification-dropdown-loading {
+    @include mixins.lightDark(color, #666, #aaa);
+  }
+}
+
+@include mixins.smaller-than(vars.$bp-l) {
+  .notification-bell-wrapper {
+    padding-inline-start: 0;
+  }
+
+  .notification-dropdown {
+    position: fixed;
+    inset-inline-end: vars.$m;
+    width: calc(100vw - #{vars.$xl});
+    max-width: 360px;
+  }
+}

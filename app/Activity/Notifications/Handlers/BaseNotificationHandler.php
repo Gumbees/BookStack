@@ -18,6 +18,11 @@ abstract class BaseNotificationHandler implements NotificationHandler
      */
     protected function sendNotificationToUserIds(string $notification, array $userIds, User $initiator, string|Loggable $detail, Entity $relatedModel): void
     {
+        // Respect admin global email notification toggle
+        if (!setting('notifications.email_enabled', true)) {
+            return;
+        }
+
         $users = User::query()->whereIn('id', array_unique($userIds))->get();
 
         /** @var User $user */

@@ -10,6 +10,8 @@ import {commentGutter} from './components/comment-gutter';
 import {collaborativeEditor} from './components/collaborative-editor';
 import {collabPresence} from './components/collab-presence';
 import {backlinksPanel} from './components/backlinks-panel';
+import {notificationBell} from './components/notification-bell';
+import {notificationList} from './components/notification-list';
 
 // eslint-disable-next-line no-underscore-dangle
 window.__DEV__ = false;
@@ -36,4 +38,6 @@ Alpine.data('commentGutter', commentGutter);
 Alpine.data('collaborativeEditor', collaborativeEditor);
 Alpine.data('collabPresence', collabPresence);
 Alpine.data('backlinksPanel', backlinksPanel);
+Alpine.data('notificationBell', notificationBell);
+Alpine.data('notificationList', notificationList);
 Alpine.start();

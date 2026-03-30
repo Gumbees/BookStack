@@ -227,6 +227,14 @@ Route::middleware('auth')->group(function () {
     // Watching
     Route::put('/watching/update', [ActivityControllers\WatchController::class, 'update']);
 
+    // In-app notifications
+    Route::get('/notifications', [ActivityControllers\NotificationController::class, 'index']);
+    Route::get('/ajax/notifications', [ActivityControllers\NotificationController::class, 'list']);
+    Route::get('/ajax/notifications/unread-count', [ActivityControllers\NotificationController::class, 'unreadCount']);
+    Route::put('/ajax/notifications/{id}/read', [ActivityControllers\NotificationController::class, 'markAsRead']);
+    Route::post('/ajax/notifications/mark-all-read', [ActivityControllers\NotificationController::class, 'markAllAsRead']);
+    Route::delete('/ajax/notifications/{id}', [ActivityControllers\NotificationController::class, 'destroy']);
+
     // Importing
     Route::get('/import', [ExportControllers\ImportController::class, 'start']);
     Route::post('/import', [ExportControllers\ImportController::class, 'upload']);

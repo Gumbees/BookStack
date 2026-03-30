@@ -18,6 +18,9 @@ class Kernel extends ConsoleKernel
     {
         // M-6: Clean up expired OAuth tokens and authorization codes daily
         $schedule->command('bookstack:cleanup-oauth')->daily();
+
+        // Clean up old in-app notifications daily
+        $schedule->command('bookstack:cleanup-notifications')->daily();
     }
 
     /**

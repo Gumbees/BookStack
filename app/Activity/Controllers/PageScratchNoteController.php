@@ -3,11 +3,17 @@
 namespace BookStack\Activity\Controllers;
 
 use BookStack\Activity\Models\PageScratchNote;
+use BookStack\Activity\Models\ScratchNoteMentionHistory;
+use BookStack\Activity\Notifications\InAppNotificationService;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Http\Controller;
 use BookStack\Permissions\Permission;
+use BookStack\Permissions\PermissionApplicator;
+use BookStack\Settings\UserNotificationPreferences;
+use BookStack\Users\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PageScratchNoteController extends Controller
 {
@@ -66,6 +72,11 @@ class PageScratchNoteController extends Controller
 
         $note->load('user:id,name');
 
+        // Process @mentions on creation
+        if (setting('notifications.mention_enabled', true) && setting('notifications.in_app_enabled', true)) {
+            $this->processMentions($note, $input['content'], isUpdate: false);
+        }
+
         return response()->json($this->noteToArray($note), 201);
     }
 
@@ -106,6 +117,11 @@ class PageScratchNoteController extends Controller
 
         $note->load('user:id,name');
 
+        // Process @mentions on update (skip previously notified users)
+        if (setting('notifications.mention_enabled', true) && setting('notifications.in_app_enabled', true)) {
+            $this->processMentions($note, $input['content'], isUpdate: true);
+        }
+
         return response()->json($this->noteToArray($note));
     }
 
@@ -140,6 +156,101 @@ class PageScratchNoteController extends Controller
         $note->delete();
 
         return response()->json([], 204);
+    }
+
+    /**
+     * Parse @Username mentions from plain text content and fire in-app notifications.
+     * Matches `@Name` patterns against user names in the system.
+     * On updates, skips users who were already notified for this note.
+     */
+    protected function processMentions(PageScratchNote $note, string $content, bool $isUpdate): void
+    {
+        // Match @Word or @First Last style mentions (greedy word boundary match)
+        preg_match_all('/@([\w][\w\s]{0,48}[\w]|[\w]+)/u', $content, $matches);
+        $rawNames = array_unique($matches[1] ?? []);
+
+        if (empty($rawNames)) {
+            return;
+        }
+
+        // Find users whose names match
+        $mentionedUsers = User::query()
+            ->whereIn('name', $rawNames)
+            ->get();
+
+        if ($mentionedUsers->isEmpty()) {
+            return;
+        }
+
+        // On updates, filter out already-notified users
+        if ($isUpdate) {
+            $previousUserIds = ScratchNoteMentionHistory::query()
+                ->where('scratch_note_id', $note->id)
+                ->pluck('user_id')
+                ->toArray();
+
+            $mentionedUsers = $mentionedUsers->reject(
+                fn(User $u) => in_array($u->id, $previousUserIds)
+            );
+        }
+
+        if ($mentionedUsers->isEmpty()) {
+            return;
+        }
+
+        // Load the page for permission checks and notification link
+        $note->loadMissing('page');
+        $page = $note->page;
+
+        if ($page === null) {
+            return;
+        }
+
+        $initiator = user();
+        $service = new InAppNotificationService();
+
+        $now = now();
+        $historyRows = [];
+
+        foreach ($mentionedUsers as $recipient) {
+            // Don't notify self
+            if ($recipient->id === $initiator->id) {
+                continue;
+            }
+
+            if (!$recipient->can(Permission::ReceiveNotifications)) {
+                continue;
+            }
+
+            $permissions = new PermissionApplicator($recipient);
+            if (!$permissions->checkOwnableUserAccess($page, 'view')) {
+                continue;
+            }
+
+            try {
+                $service->notify($recipient, 'scratch_note_mention', [
+                    'title'             => $page->name,
+                    'message'           => $initiator->name . ' mentioned you in a scratch note.',
+                    'link'              => $page->getUrl(),
+                    'entity_id'         => $page->id,
+                    'entity_type'       => $page->getMorphClass(),
+                    'triggered_by_id'   => $initiator->id,
+                    'triggered_by_name' => $initiator->name,
+                ]);
+
+                $historyRows[] = [
+                    'scratch_note_id' => $note->id,
+                    'user_id'         => $recipient->id,
+                    'created_at'      => $now,
+                ];
+            } catch (\Exception $e) {
+                Log::error("Failed to create scratch note mention notification for user [id:{$recipient->id}]: {$e->getMessage()}");
+            }
+        }
+
+        if (!empty($historyRows)) {
+            ScratchNoteMentionHistory::query()->insert($historyRows);
+        }
     }
 
     /**

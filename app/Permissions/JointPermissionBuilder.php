@@ -41,7 +41,7 @@ class JointPermissionBuilder
             $this->buildJointPermissionsForBooks($books, $roles);
         });
 
-        // Chunk through all bookshelves
+        // Chunk through all bookshelves (shelves cannot be private)
         $this->queries->shelves->start()->withTrashed()->select(['id', 'owned_by'])
             ->chunk(50, function (EloquentCollection $shelves) use ($roles) {
                 $this->createManyJointPermissions($shelves->all(), $roles);
@@ -50,9 +50,29 @@ class JointPermissionBuilder
 
     /**
      * Rebuild the entity jointPermissions for a particular entity.
+     * Private books and their children do not use joint permissions.
      */
     public function rebuildForEntity(Entity $entity): void
     {
+        // Private books are gated by ownership alone; no joint permissions needed.
+        if ($entity instanceof Book && $entity->getAttribute('is_private')) {
+            // Clean up any stale joint permissions for the book and its children.
+            $books = $this->queries->books->start()->withTrashed()
+                ->where('id', '=', $entity->id)
+                ->with([
+                    'chapters' => function ($query) {
+                        $query->withTrashed()->select(['id', 'owned_by', 'book_id']);
+                    },
+                    'pages' => function ($query) {
+                        $query->withTrashed()->select(['id', 'owned_by', 'book_id', 'chapter_id']);
+                    },
+                ])
+                ->select(['id', 'owned_by'])
+                ->get();
+            $this->buildJointPermissionsForBooks($books, [], true);
+            return;
+        }
+
         $entities = [$entity];
         if ($entity instanceof Book) {
             $books = $this->bookFetchQuery()->where('id', '=', $entity->id)->get();
@@ -62,6 +82,12 @@ class JointPermissionBuilder
         }
 
         /** @var BookChild $entity */
+        // Children of private books don't need joint permissions.
+        if ($entity->book && $entity->book->getAttribute('is_private')) {
+            $this->deleteManyJointPermissionsForEntities($entities);
+            return;
+        }
+
         if ($entity->book) {
             $entities[] = $entity->book;
         }
@@ -102,10 +128,12 @@ class JointPermissionBuilder
 
     /**
      * Get a query for fetching a book with its children.
+     * Private books are excluded since they don't use joint permissions.
      */
     protected function bookFetchQuery(): Builder
     {
         return $this->queries->books->start()->withTrashed()
+            ->where('is_private', '=', false)
             ->select(['id', 'owned_by'])->with([
                 'chapters' => function ($query) {
                     $query->withTrashed()->select(['id', 'owned_by', 'book_id']);

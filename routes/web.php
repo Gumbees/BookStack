@@ -257,6 +257,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/users/{id}', [UserControllers\UserController::class, 'update']);
     Route::delete('/settings/users/{id}', [UserControllers\UserController::class, 'destroy']);
 
+    // Private Notebook
+    Route::get('/my-notebook', [EntityControllers\PrivateNotebookController::class, 'index']);
+
     // User Account
     Route::get('/my-account', [UserControllers\UserAccountController::class, 'redirect']);
     Route::get('/my-account/profile', [UserControllers\UserAccountController::class, 'showProfile']);

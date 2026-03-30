@@ -102,6 +102,7 @@ abstract class Entity extends Model implements
         'created_by',
         'updated_by',
         'owned_by',
+        'is_private',
     ];
 
     /**

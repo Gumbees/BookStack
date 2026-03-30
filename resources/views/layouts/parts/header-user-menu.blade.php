@@ -8,6 +8,14 @@
     </button>
     <ul refs="dropdown@menu" class="dropdown-menu" role="menu" aria-label="{{ trans('common.profile_menu') }}">
         <li>
+            <a href="{{ url('/my-notebook') }}"
+               role="menuitem"
+               class="icon-item">
+                @icon('lock')
+                <div>{{ trans('entities.my_notebook') }}</div>
+            </a>
+        </li>
+        <li>
             <a href="{{ url('/favourites') }}"
                role="menuitem"
                data-shortcut="favourites_view"

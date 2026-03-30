@@ -35,6 +35,7 @@ class Book extends Entity implements HasDescriptionInterface, HasCoverInterface,
 
     protected $hidden = ['pivot', 'deleted_at', 'description_html', 'entity_id', 'entity_type', 'chapter_id', 'book_id', 'priority'];
     protected $fillable = ['name'];
+    protected $casts = ['is_private' => 'boolean'];
 
     /**
      * Get the url for this book.

@@ -98,15 +98,29 @@ class PermissionApplicator
      */
     public function restrictEntityQuery(Builder $query): Builder
     {
-        return $query->where(function (Builder $parentQuery) {
-            $parentQuery->whereHas('jointPermissions', function (Builder $permissionQuery) {
+        $currentUser = $this->currentUser();
+
+        return $query->where(function (Builder $parentQuery) use ($currentUser) {
+            // Standard joint-permission visibility check.
+            // Private entities never have joint permission rows, so they naturally
+            // fail this check for non-owners via relation queries (Activity, Watch).
+            $parentQuery->whereHas('jointPermissions', function (Builder $permissionQuery) use ($currentUser) {
                 $permissionQuery->select(['entity_id', 'entity_type'])
                     ->selectRaw('max(owner_id) as owner_id')
                     ->selectRaw('max(status) as status')
                     ->whereIn('role_id', $this->getCurrentUserRoleIds())
                     ->groupBy(['entity_type', 'entity_id'])
-                    ->havingRaw('(status IN (1, 3) or (owner_id = ? and status != 2))', [$this->currentUser()->id]);
+                    ->havingRaw('(status IN (1, 3) or (owner_id = ? and status != 2))', [$currentUser->id]);
             });
+
+            // Private entities are visible only to their owner (never to guests).
+            // Only applicable when querying entity models directly (not Activity/Watch).
+            if (!$currentUser->isGuest() && $parentQuery->getModel() instanceof Entity) {
+                $parentQuery->orWhere(function (Builder $q) use ($currentUser) {
+                    $q->where('is_private', '=', true)
+                        ->where('owned_by', '=', $currentUser->id);
+                });
+            }
         });
     }
 

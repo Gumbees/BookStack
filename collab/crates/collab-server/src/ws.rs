@@ -97,6 +97,7 @@ async fn handle_socket(
         let doc = handle.doc.read().await;
         let sv = doc.transact().state_vector();
         let sv_bytes = sv.encode_v1();
+        drop(doc); // release borrow before potential early return
         let mut msg = vec![MSG_SYNC_STEP1];
         msg.extend_from_slice(&encode_var_uint(sv_bytes.len()));
         msg.extend_from_slice(&sv_bytes);

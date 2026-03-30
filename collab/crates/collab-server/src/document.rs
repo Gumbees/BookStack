@@ -46,7 +46,7 @@ impl DocumentManager {
     pub fn get_or_create(&self, doc_id: &str) -> Arc<DocHandle> {
         self.docs
             .entry(doc_id.to_string())
-            .or_insert_with(DocHandle::new)
+            .or_insert_with(|| Arc::new(DocHandle::new()))
             .clone()
     }
 

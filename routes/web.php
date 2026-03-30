@@ -12,6 +12,7 @@ use BookStack\Entities\Controllers as EntityControllers;
 use BookStack\Exports\Controllers as ExportControllers;
 use BookStack\Http\Middleware\VerifyCsrfToken;
 use BookStack\Permissions\PermissionsController;
+use BookStack\References\BacklinkController;
 use BookStack\References\ReferenceController;
 use BookStack\Search\SearchController;
 use BookStack\Settings as SettingControllers;
@@ -173,6 +174,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/ajax/page/{id}/save-draft', [EntityControllers\PageController::class, 'saveDraft']);
     Route::get('/ajax/page/{id}', [EntityControllers\PageController::class, 'getPageAjax']);
     Route::delete('/ajax/page/{id}', [EntityControllers\PageController::class, 'ajaxDestroy']);
+
+    // Backlinks sidebar panel
+    Route::get('/ajax/backlinks/{type}/{id}', [BacklinkController::class, 'show']);
 
     // Scratch notes
     Route::get('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'show']);

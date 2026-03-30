@@ -53,4 +53,5 @@
     @include('pages.parts.show-sidebar-section-details', ['page' => $page, 'watchOptions' => $watchOptions, 'book' => $book])
     @include('pages.parts.show-sidebar-section-actions', ['page' => $page, 'watchOptions' => $watchOptions])
     @include('pages.parts.show-sidebar-section-scratch-notes', ['page' => $page])
+    @include('entities.show-sidebar-section-backlinks', ['entity' => $page])
 @stop

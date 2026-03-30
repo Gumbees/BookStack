@@ -75,6 +75,7 @@
 @section('right')
     @include('books.parts.show-sidebar-section-details', ['book' => $book, 'watchOptions' => $watchOptions])
     @include('books.parts.show-sidebar-section-actions', ['book' => $book, 'watchOptions' => $watchOptions])
+    @include('entities.show-sidebar-section-backlinks', ['entity' => $book])
 @stop
 
 @section('left')

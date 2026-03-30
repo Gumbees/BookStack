@@ -65,6 +65,7 @@
 @section('right')
     @include('chapters.parts.show-sidebar-section-details', ['chapter' => $chapter, 'book' => $book, 'watchOptions' => $watchOptions])
     @include('chapters.parts.show-sidebar-section-actions', ['chapter' => $chapter, 'watchOptions' => $watchOptions])
+    @include('entities.show-sidebar-section-backlinks', ['entity' => $chapter])
 @stop
 
 @section('left')

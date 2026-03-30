@@ -1322,3 +1322,127 @@ details.section-expander {
   margin-block-start: vars.$xxs;
   min-height: 1.4em;
 }
+
+// Backlinks sidebar panel
+.backlinks-panel {
+  border-bottom: 1px solid #DDD;
+  @include mixins.lightDark(border-color, #DDD, #333);
+}
+
+.backlinks-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: start;
+
+  h5 {
+    margin: 0;
+  }
+}
+
+.backlinks-caret {
+  display: inline-block;
+  font-size: 1rem;
+  @include mixins.lightDark(color, #888, #888);
+  transition: transform ease-in-out 180ms;
+  transform: rotate(0deg);
+
+  &.open {
+    transform: rotate(90deg);
+  }
+}
+
+.backlinks-body {
+  padding-block-start: vars.$s;
+  padding-block-end: vars.$s;
+}
+
+.backlinks-section {
+  margin-block-end: vars.$s;
+}
+
+.backlinks-section-label {
+  font-size: vars.$fs-s;
+  font-weight: bold;
+  @include mixins.lightDark(color, #666, #999);
+  margin: 0 0 vars.$xs;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.backlink-item {
+  display: block;
+  padding: vars.$xs 0;
+  border-bottom: 1px solid transparent;
+  @include mixins.lightDark(border-color, #eee, #2a2a2a);
+  text-decoration: none;
+  color: inherit;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    .backlink-name {
+      text-decoration: underline;
+    }
+  }
+
+  &.backlink-item-unlinked {
+    opacity: 0.85;
+  }
+}
+
+.backlink-type {
+  display: inline-block;
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #888, #666);
+  @include mixins.lightDark(background-color, #f0f0f0, #2a2a2a);
+  border-radius: 2px;
+  padding: 0 vars.$xxs;
+  margin-block-end: vars.$xxs;
+}
+
+.backlink-name {
+  display: block;
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #333, #ccc);
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backlink-breadcrumb {
+  display: block;
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #888, #666);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-block-end: vars.$xxs;
+}
+
+.backlink-excerpt {
+  display: block;
+  font-size: vars.$fs-s;
+  @include mixins.lightDark(color, #888, #666);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+
+.backlink-highlight {
+  @include mixins.lightDark(background-color, #fff3cd, #4a3800);
+  @include mixins.lightDark(color, #444, #eee);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}

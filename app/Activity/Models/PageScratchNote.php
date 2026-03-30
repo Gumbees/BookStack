@@ -8,24 +8,19 @@ use BookStack\Users\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * @property int         $id
- * @property int         $user_id
- * @property int         $page_id
- * @property string|null $content
- * @property string|null $updated_at
+ * @property int    $id
+ * @property int    $page_id
+ * @property int    $user_id
+ * @property string $content
  */
 class PageScratchNote extends Model
 {
-    protected $fillable = ['user_id', 'page_id', 'content'];
+    protected $fillable = ['page_id', 'user_id', 'content'];
 
-    public $timestamps = false;
-
-    protected $casts = [
-        'updated_at' => 'datetime',
-    ];
+    public $timestamps = true;
 
     /**
-     * Get the user that owns this scratch note.
+     * Get the user that authored this note.
      *
      * @return BelongsTo<User, $this>
      */
@@ -35,7 +30,7 @@ class PageScratchNote extends Model
     }
 
     /**
-     * Get the page this scratch note belongs to.
+     * Get the page this note belongs to.
      *
      * @return BelongsTo<Page, $this>
      */

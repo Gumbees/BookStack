@@ -179,8 +179,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/ajax/backlinks/{type}/{id}', [BacklinkController::class, 'show']);
 
     // Scratch notes
-    Route::get('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'show']);
-    Route::put('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'update']);
+    Route::get('/ajax/page/{pageId}/scratch-notes', [ActivityControllers\PageScratchNoteController::class, 'index']);
+    Route::post('/ajax/page/{pageId}/scratch-notes', [ActivityControllers\PageScratchNoteController::class, 'store']);
+    Route::put('/ajax/page/{pageId}/scratch-notes/{noteId}', [ActivityControllers\PageScratchNoteController::class, 'update']);
+    Route::delete('/ajax/page/{pageId}/scratch-notes/{noteId}', [ActivityControllers\PageScratchNoteController::class, 'destroy']);
 
     // Collaborative editing
     Route::get('/collab/token/{pageId}', [CollabController::class, 'token']);

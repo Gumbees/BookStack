@@ -1,0 +1,23 @@
+# Build-only Docker Compose for building and tagging both images.
+#
+# Usage:
+#   docker compose -f docker-compose.build.yml build
+#   docker compose -f docker-compose.build.yml build --no-cache
+#   docker compose -f docker-compose.build.yml push
+#
+# This file exists solely for building and pushing images. Use
+# docker-compose.prod.yml to run them.
+
+services:
+
+  bookstack:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: gumbees/bookstack:latest
+
+  collab:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.collab
+    image: gumbees/bookstack-collab:latest

@@ -1,0 +1,101 @@
+# Production Docker Compose for the BookStack fork.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required environment variables (set in .env or export before running):
+#
+#   APP_KEY           -- Laravel app key (run: php artisan key:generate --show)
+#   APP_URL           -- Full public URL, e.g. https://bookstack.example.com
+#   DB_HOST           -- MySQL/MariaDB host
+#   DB_DATABASE       -- Database name
+#   DB_USERNAME       -- Database user
+#   DB_PASSWORD       -- Database password
+#   COLLAB_JWT_SECRET -- Long random secret shared between bookstack and collab
+#                        (run: openssl rand -base64 48)
+#
+# Optional:
+#   COLLAB_PORT       -- Port for the collab WebSocket server (default: 7700)
+#   COLLAB_ENABLED    -- Set to "true" to enable collaborative editing (default: false)
+
+volumes:
+  bookstack-config: {}
+  bookstack-data: {}
+
+networks:
+  bookstack:
+    driver: bridge
+
+services:
+
+  bookstack:
+    image: gumbees/bookstack:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    networks:
+      - bookstack
+    environment:
+      # Core
+      PUID: 1000
+      PGID: 1000
+      APP_URL: ${APP_URL}
+      APP_KEY: ${APP_KEY}
+      # Database
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # Mail
+      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
+      MAIL_HOST: ${MAIL_HOST:-localhost}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-null}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-null}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-null}
+      MAIL_FROM: ${MAIL_FROM:-bookstack@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-BookStack}
+      # Storage
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      # Collaborative editing
+      COLLAB_ENABLED: ${COLLAB_ENABLED:-false}
+      COLLAB_SERVER_URL: ${COLLAB_SERVER_URL:-ws://collab:7700}
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET}
+    volumes:
+      - bookstack-config:/config
+      - bookstack-data:/config/www/public/uploads
+    ports:
+      - "${APP_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      collab:
+        condition: service_healthy
+
+  collab:
+    image: gumbees/bookstack-collab:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.collab
+    restart: unless-stopped
+    networks:
+      - bookstack
+    environment:
+      COLLAB_PORT: ${COLLAB_PORT:-7700}
+      COLLAB_JWT_SECRET: ${COLLAB_JWT_SECRET}
+      # Optional: set RUST_LOG=debug for verbose output
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "${COLLAB_PORT:-7700}:7700"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${COLLAB_PORT:-7700}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

@@ -1,12 +1,67 @@
-# Build stage
+# Production Dockerfile for the BookStack collab sidecar.
+#
+# Build from the repo root (NOT from the docker/ directory):
+#   docker build -f docker/Dockerfile.collab -t gumbees/bookstack-collab:latest .
+#
+# Two-stage build:
+#   1. builder  -- compiles the Rust binary with full toolchain
+#   2. runtime  -- minimal Debian image with only the binary + CA certs
+
+# ---------------------------------------------------------------------------
+# Stage 1: Rust builder
+# ---------------------------------------------------------------------------
 FROM rust:1.85-bookworm AS builder
+
 WORKDIR /build
-COPY collab/ .
+
+# Copy workspace manifest and lock file first for layer caching.
+# Cargo requires the full workspace to resolve dependencies, so we copy the
+# top-level collab/ workspace root (Cargo.toml + Cargo.lock) plus all crates.
+COPY collab/Cargo.toml collab/Cargo.lock* ./
+COPY collab/crates/ ./crates/
+
+# Pre-fetch and compile dependencies with a dummy binary so the dependency
+# layer is cached independently of source changes.
+RUN mkdir -p crates/collab-server/src && \
+    echo 'fn main() {}' > crates/collab-server/src/main.rs && \
+    mkdir -p crates/collab-wasm/src && \
+    echo '' > crates/collab-wasm/src/lib.rs && \
+    cargo build --release -p collab-server && \
+    rm -f \
+        target/release/collab-server \
+        target/release/deps/collab_server* \
+        crates/collab-server/src/main.rs \
+        crates/collab-wasm/src/lib.rs
+
+# Now build with real source
+COPY collab/crates/ ./crates/
 RUN cargo build --release -p collab-server
 
-# Runtime
+# ---------------------------------------------------------------------------
+# Stage 2: Minimal runtime image
+# ---------------------------------------------------------------------------
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /build/target/release/collab-server /usr/local/bin/
+
+# Install CA certificates for outbound TLS and wget for health checks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates wget && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for running the server
+RUN addgroup --system collab && \
+    adduser --system --ingroup collab --no-create-home collab
+
+COPY --from=builder /build/target/release/collab-server /usr/local/bin/collab-server
+
+# Ensure the binary is executable
+RUN chmod 755 /usr/local/bin/collab-server
+
+USER collab
+
 EXPOSE 7700
-CMD ["collab-server"]
+
+# Use exec form so the process receives signals directly (no shell wrapper)
+ENTRYPOINT ["/usr/local/bin/collab-server"]
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -qO /dev/null http://localhost:${COLLAB_PORT:-7700}/health || exit 1

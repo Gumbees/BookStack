@@ -3,8 +3,13 @@
 .github
 .claude
 
-# Node modules (not needed — no npm build step in this Dockerfile)
+# Node modules -- installed fresh in the js-builder stage
 node_modules
+
+# Rust build artifacts -- collab/ source is needed for the wasm-builder and
+# collab-server builder stages, but pre-existing target/ dirs should not be
+# sent to the daemon (they can be hundreds of MB)
+collab/target
 
 # Storage directories that should never be baked into an image
 storage/logs

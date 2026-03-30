@@ -17,7 +17,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{BinaryType, MessageEvent, WebSocket};
 use yrs::{
     updates::encoder::Encode,
-    Doc, GetString, ReadTxn, StateVector, Text, Transact,
+    Doc, GetString, ReadTxn, StateVector, Text, Transact, WriteTxn,
 };
 
 /// The main collaborative session exposed to JavaScript.

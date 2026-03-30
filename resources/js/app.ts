@@ -7,6 +7,8 @@ import {baseUrl, importVersioned} from "./services/util";
 import Alpine from 'alpinejs';
 import {scratchNotes} from './components/scratch-notes';
 import {commentGutter} from './components/comment-gutter';
+import {collaborativeEditor} from './components/collaborative-editor';
+import {collabPresence} from './components/collab-presence';
 
 // eslint-disable-next-line no-underscore-dangle
 window.__DEV__ = false;
@@ -30,4 +32,6 @@ window.$components.init();
 // BookStack component system which uses the 'component' attribute.
 Alpine.data('scratchNotes', scratchNotes);
 Alpine.data('commentGutter', commentGutter);
+Alpine.data('collaborativeEditor', collaborativeEditor);
+Alpine.data('collabPresence', collabPresence);
 Alpine.start();

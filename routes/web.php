@@ -7,6 +7,7 @@ use BookStack\Api\ApiDocsController;
 use BookStack\Api\UserApiTokenController;
 use BookStack\App\HomeController;
 use BookStack\App\MetaController;
+use BookStack\Collaboration\CollabController;
 use BookStack\Entities\Controllers as EntityControllers;
 use BookStack\Exports\Controllers as ExportControllers;
 use BookStack\Http\Middleware\VerifyCsrfToken;
@@ -176,6 +177,9 @@ Route::middleware('auth')->group(function () {
     // Scratch notes
     Route::get('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'show']);
     Route::put('/ajax/page/{pageId}/scratch-note', [ActivityControllers\PageScratchNoteController::class, 'update']);
+
+    // Collaborative editing
+    Route::get('/collab/token/{pageId}', [CollabController::class, 'token']);
 
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);

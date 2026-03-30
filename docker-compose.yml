@@ -46,6 +46,16 @@ services:
     volumes:
       - ./:/app
     entrypoint: /app/dev/docker/entrypoint.node.sh
+  collab:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.collab
+    environment:
+      - COLLAB_PORT=${COLLAB_PORT:-7700}
+      - COLLAB_JWT_SECRET=${COLLAB_JWT_SECRET}
+    ports:
+      - "${COLLAB_PORT:-7700}:7700"
+    restart: unless-stopped
   mailhog:
     image: mailhog/mailhog
     ports:

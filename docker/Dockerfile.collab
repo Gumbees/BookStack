@@ -1,0 +1,12 @@
+# Build stage
+FROM rust:1.85-bookworm AS builder
+WORKDIR /build
+COPY collab/ .
+RUN cargo build --release -p collab-server
+
+# Runtime
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/collab-server /usr/local/bin/
+EXPOSE 7700
+CMD ["collab-server"]

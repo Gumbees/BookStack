@@ -96,6 +96,22 @@
     </div>
 
     <div class="flex-container-row justify-flex-end gap-x-m items-center">
+
+        {{-- Collaborative editor presence indicators --}}
+        @if(config('collab.enabled') && $editor === \BookStack\Entities\Tools\PageEditorType::WysiwygLexical)
+        <div x-data="collabPresence()"
+             x-ref="collabPresencePanel"
+             class="collab-presence-bar flex-container-row items-center gap-x-xs">
+            <template x-for="peer in peers" :key="peer.user_id">
+                <div class="collab-avatar"
+                     :style="'background-color: ' + peer.color"
+                     :title="peer.user_name">
+                    <span x-text="peer.user_name.charAt(0).toUpperCase()"></span>
+                </div>
+            </template>
+        </div>
+        @endif
+
         <div component="dropdown"
              option:dropdown:move-menu="true"
              class="dropdown-container">

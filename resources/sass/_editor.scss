@@ -722,3 +722,53 @@ textarea.editor-form-field-input[name="source"] {
 .editor-theme-underline-strikethrough {
   text-decoration: underline line-through;
 }
+// Collaborative editing presence indicators
+.collab-presence-bar {
+  min-width: 0;
+}
+
+.collab-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+  box-shadow: 0 0 0 2px #fff;
+  transition: transform 0.15s ease;
+
+  &:hover {
+    transform: scale(1.15);
+    z-index: 1;
+  }
+}
+
+// Remote cursor caret shown inside the editor content area
+.collab-cursor {
+  position: relative;
+  display: inline-block;
+  pointer-events: none;
+  border-left: 2px solid var(--collab-cursor-color, #e53935);
+  height: 1.2em;
+  vertical-align: text-bottom;
+}
+
+.collab-cursor-label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  background-color: var(--collab-cursor-color, #e53935);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1.4;
+  pointer-events: none;
+}

@@ -33,5 +33,6 @@ tests
 # Compose files (not needed in the build context)
 docker-compose*.yml
 
-# Dev tooling
-dev
+# Dev tooling (except dev/build which is needed by the JS build stage)
+dev/api
+dev/docs

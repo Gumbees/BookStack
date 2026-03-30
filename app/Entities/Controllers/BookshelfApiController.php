@@ -130,22 +130,24 @@ class BookshelfApiController extends ApiController
         $shelf->appendBook($book);
         Activity::add(ActivityType::BOOKSHELF_UPDATE, $shelf);
 
-        return response()->json([
-            'message' => 'Book successfully added to shelf.',
-            'shelf_id' => $shelf->id,
-            'book_id' => $book->id,
-        ]);
+        return response()->json($this->forJsonDisplay($shelf));
     }
 
     /**
      * Remove a book from a shelf.
      * This only detaches the book from the shelf; it does not delete the book.
+     * If the book is not currently on the shelf, the request is a no-op and returns success.
+     * Note: findVisibleByIdOrFail on the book returns 404 for non-visible books, preventing
+     * users from detaching books they cannot see — consistent with the updateBooks invariant
+     * that preserves non-visible book assignments.
      */
     public function detachBook(string $id, string $bookId)
     {
         $shelf = $this->queries->findVisibleByIdOrFail(intval($id));
         $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);
 
+        // findVisibleByIdOrFail ensures users cannot target books they lack view permission
+        // on, which aligns with the updateBooks invariant that preserves non-visible books.
         $book = $this->bookQueries->findVisibleByIdOrFail(intval($bookId));
 
         $shelf->books()->detach($book->id);

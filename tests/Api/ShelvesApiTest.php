@@ -262,4 +262,69 @@ class ShelvesApiTest extends TestCase
         $resp->assertStatus(204);
         $this->assertActivityExists('bookshelf_delete');
     }
+
+    public function test_attach_book_to_shelf()
+    {
+        $this->actingAsApiEditor();
+        $shelf = $this->entities->shelf();
+        $book = $this->entities->book();
+        $shelf->books()->detach($book->id);
+
+        $resp = $this->putJson($this->baseEndpoint . "/{$shelf->id}/books/{$book->id}");
+
+        $resp->assertStatus(200);
+        $resp->assertJson([
+            'id' => $shelf->id,
+            'slug' => $shelf->slug,
+        ]);
+        $this->assertDatabaseHas('bookshelves_books', [
+            'bookshelf_id' => $shelf->id,
+            'book_id'      => $book->id,
+        ]);
+        $this->assertActivityExists('bookshelf_update', $shelf);
+    }
+
+    public function test_attach_book_to_shelf_requires_permission()
+    {
+        $editor = $this->users->editor();
+        $this->permissions->removeUserRolePermissions($editor, ['bookshelf-update-all', 'bookshelf-update-own']);
+        $this->actingAsForApi($editor);
+
+        $shelf = $this->entities->shelf();
+        $book = $this->entities->book();
+
+        $resp = $this->putJson($this->baseEndpoint . "/{$shelf->id}/books/{$book->id}");
+        $this->assertPermissionError($resp);
+    }
+
+    public function test_detach_book_from_shelf()
+    {
+        $this->actingAsApiEditor();
+        $shelf = $this->entities->shelf();
+        $book = $shelf->books()->first();
+        $this->assertNotNull($book);
+
+        $resp = $this->deleteJson($this->baseEndpoint . "/{$shelf->id}/books/{$book->id}");
+
+        $resp->assertStatus(204);
+        $this->assertDatabaseMissing('bookshelves_books', [
+            'bookshelf_id' => $shelf->id,
+            'book_id'      => $book->id,
+        ]);
+        $this->assertActivityExists('bookshelf_update', $shelf);
+    }
+
+    public function test_detach_book_from_shelf_requires_permission()
+    {
+        $editor = $this->users->editor();
+        $this->permissions->removeUserRolePermissions($editor, ['bookshelf-update-all', 'bookshelf-update-own']);
+        $this->actingAsForApi($editor);
+
+        $shelf = $this->entities->shelf();
+        $book = $shelf->books()->first();
+        $this->assertNotNull($book);
+
+        $resp = $this->deleteJson($this->baseEndpoint . "/{$shelf->id}/books/{$book->id}");
+        $this->assertPermissionError($resp);
+    }
 }

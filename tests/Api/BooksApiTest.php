@@ -3,6 +3,7 @@
 namespace Tests\Api;
 
 use BookStack\Entities\Models\Book;
+use BookStack\Entities\Models\Bookshelf;
 use BookStack\Entities\Repos\BaseRepo;
 use Carbon\Carbon;
 use Tests\TestCase;
@@ -316,5 +317,30 @@ class BooksApiTest extends TestCase
 
         $resp->assertStatus(204);
         $this->assertActivityExists('book_delete');
+    }
+
+    public function test_create_book_with_shelf_id()
+    {
+        $this->actingAsApiEditor();
+        $shelf = $this->entities->shelf();
+        $details = [
+            'name'     => 'My API book with shelf',
+            'shelf_id' => $shelf->id,
+        ];
+
+        $resp = $this->postJson($this->baseEndpoint, $details);
+        $resp->assertStatus(200);
+
+        $newBook = Book::query()->orderByDesc('id')->where('name', '=', $details['name'])->first();
+        $resp->assertJson([
+            'id'   => $newBook->id,
+            'slug' => $newBook->slug,
+            'name' => $details['name'],
+        ]);
+        $this->assertDatabaseHas('bookshelves_books', [
+            'bookshelf_id' => $shelf->id,
+            'book_id'      => $newBook->id,
+        ]);
+        $this->assertActivityExists('bookshelf_update', $shelf);
     }
 }

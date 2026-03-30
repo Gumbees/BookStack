@@ -2,6 +2,7 @@
   "name": "My own book",
   "description_html": "<p>This is <strong>my</strong> own little book created via the API</p>",
   "default_template_id": 2427,
+  "shelf_id": 5,
   "tags": [
     {"name": "Category", "value": "Top Content"},
     {"name": "Rating", "value": "Highest"}

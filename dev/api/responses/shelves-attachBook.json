@@ -1,0 +1,14 @@
+{
+  "id": 14,
+  "name": "My shelf",
+  "slug": "my-shelf",
+  "description": "This is my shelf with some books",
+  "description_html": "<p>This is my shelf with some books<\/p>",
+  "created_by": 1,
+  "updated_by": 1,
+  "owned_by": 1,
+  "created_at": "2020-04-10T13:24:09.000000Z",
+  "updated_at": "2020-04-10T13:31:04.000000Z",
+  "tags": [],
+  "cover": null
+}

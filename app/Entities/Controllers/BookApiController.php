@@ -60,7 +60,7 @@ class BookApiController extends ApiController
 
         $book = $this->bookRepo->create($requestData);
 
-        $shelfId = $request->get('shelf_id');
+        $shelfId = $requestData['shelf_id'] ?? null;
         if ($shelfId) {
             $shelf = $this->shelfQueries->findVisibleByIdOrFail(intval($shelfId));
             $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);

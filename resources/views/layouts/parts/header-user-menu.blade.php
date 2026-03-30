@@ -16,6 +16,14 @@
             </a>
         </li>
         <li>
+            <a href="{{ url('/my-journal') }}"
+               role="menuitem"
+               class="icon-item">
+                @icon('edit')
+                <div>{{ trans('entities.my_journal') }}</div>
+            </a>
+        </li>
+        <li>
             <a href="{{ url('/favourites') }}"
                role="menuitem"
                data-shortcut="favourites_view"

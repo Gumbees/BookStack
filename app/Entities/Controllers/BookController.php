@@ -10,6 +10,7 @@ use BookStack\Entities\Queries\BookQueries;
 use BookStack\Entities\Queries\BookshelfQueries;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Repos\BookRepo;
+use BookStack\Entities\Services\PrivateJournalService;
 use BookStack\Entities\Tools\BookContents;
 use BookStack\Entities\Tools\Cloner;
 use BookStack\Entities\Tools\HierarchyTransformer;
@@ -35,6 +36,7 @@ class BookController extends Controller
         protected EntityQueries $entityQueries,
         protected BookshelfQueries $shelfQueries,
         protected ReferenceFetcher $referenceFetcher,
+        protected PrivateJournalService $journalService,
     ) {
     }
 
@@ -149,6 +151,9 @@ class BookController extends Controller
 
         $this->setPageTitle($book->getShortName());
 
+        $isJournalBook = $book->is_private && !user()->isGuest()
+            && $this->journalService->isUsersJournal($book, user());
+
         return view('books.show', [
             'book'              => $book,
             'current'           => $book,
@@ -157,6 +162,7 @@ class BookController extends Controller
             'watchOptions'      => new UserEntityWatchOptions(user(), $book),
             'activity'          => $activities->entityActivity($book, 20, 1),
             'referenceCount'    => $this->referenceFetcher->getReferenceCountToEntity($book),
+            'isJournalBook'     => $isJournalBook,
         ]);
     }
 

@@ -26,10 +26,23 @@
     <main class="content-wrap card">
         <h1 class="break-text">{{$book->name}}</h1>
         @if($book->is_private)
-            <div class="flex-container-row items-center gap-xs mb-s">
-                @icon('lock')
-                <span class="text-muted text-small">{{ trans('entities.my_notebook_private_badge') }}</span>
-            </div>
+            @if($isJournalBook ?? false)
+                <div class="flex-container-row items-center gap-xs mb-s">
+                    @icon('lock')
+                    <span class="text-muted text-small">{{ trans('entities.my_journal_badge') }}</span>
+                </div>
+                <div class="mb-m">
+                    <a href="{{ url('/my-journal/today') }}" class="button outline">
+                        @icon('edit')
+                        {{ trans('entities.my_journal_today') }}
+                    </a>
+                </div>
+            @else
+                <div class="flex-container-row items-center gap-xs mb-s">
+                    @icon('lock')
+                    <span class="text-muted text-small">{{ trans('entities.my_notebook_private_badge') }}</span>
+                </div>
+            @endif
         @endif
         <div refs="entity-search@contentView" class="book-content">
             <div class="text-muted break-text">{!! $book->descriptionInfo()->getHtml() !!}</div>

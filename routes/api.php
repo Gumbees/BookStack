@@ -135,6 +135,10 @@ Route::get('search', [SearchApiController::class, 'all']);
 Route::get('{type}/{id}/backlinks', [BacklinkApiController::class, 'show'])
     ->where('type', 'page|chapter|book|shelf|bookshelf');
 
+Route::get('journal', [EntityControllers\JournalApiController::class, 'book']);
+Route::get('journal/today', [EntityControllers\JournalApiController::class, 'today']);
+Route::get('journal/{date}', [EntityControllers\JournalApiController::class, 'date'])->where('date', '\d{4}-\d{2}-\d{2}');
+
 Route::get('system', [SystemApiController::class, 'read']);
 
 Route::get('users', [UserApiController::class, 'list']);

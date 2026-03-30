@@ -282,6 +282,11 @@ Route::middleware('auth')->group(function () {
     // Private Notebook
     Route::get('/my-notebook', [EntityControllers\PrivateNotebookController::class, 'index']);
 
+    // Private Journal
+    Route::get('/my-journal', [EntityControllers\PrivateJournalController::class, 'index']);
+    Route::get('/my-journal/today', [EntityControllers\PrivateJournalController::class, 'today']);
+    Route::get('/my-journal/{date}', [EntityControllers\PrivateJournalController::class, 'date'])->where('date', '\d{4}-\d{2}-\d{2}');
+
     // User Account
     Route::get('/my-account', [UserControllers\UserAccountController::class, 'redirect']);
     Route::get('/my-account/profile', [UserControllers\UserAccountController::class, 'showProfile']);

@@ -93,18 +93,19 @@ async fn handle_socket(
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // Send sync step 1: our current state vector so the client can send us missing updates.
-    {
+    // All yrs types are scoped and dropped before any .await to satisfy Send bounds.
+    let sync_step1_msg = {
         let doc = handle.doc.read().await;
-        let sv = doc.transact().state_vector();
-        let sv_bytes = sv.encode_v1();
-        drop(doc); // release borrow before potential early return
+        let sv_bytes = doc.transact().state_vector().encode_v1();
+        drop(doc);
         let mut msg = vec![MSG_SYNC_STEP1];
         msg.extend_from_slice(&encode_var_uint(sv_bytes.len()));
         msg.extend_from_slice(&sv_bytes);
-        if ws_tx.send(Message::Binary(msg.into())).await.is_err() {
-            cleanup(client_id, doc_id, handle, doc_mgr).await;
-            return;
-        }
+        msg
+    };
+    if ws_tx.send(Message::Binary(sync_step1_msg.into())).await.is_err() {
+        cleanup(client_id, doc_id, handle, doc_mgr).await;
+        return;
     }
 
     loop {
@@ -119,29 +120,52 @@ async fn handle_socket(
                         match data[0] {
                             MSG_SYNC_STEP1 => {
                                 // Client sent its state vector; respond with step 2 (missing updates).
-                                if let Some(sv_bytes) = decode_prefixed(&data[1..]) {
-                                    if let Ok(sv) = StateVector::decode_v1(&sv_bytes) {
-                                        let doc = handle.doc.read().await;
+                                // Scope yrs types before any .await to satisfy Send bounds.
+                                let resp = if let Some(sv_bytes) = decode_prefixed(&data[1..]) {
+                                    let doc = handle.doc.read().await;
+                                    let result = if let Ok(sv) = StateVector::decode_v1(&sv_bytes) {
                                         let diff = doc.transact().encode_diff_v1(&sv);
-                                        let mut resp = vec![MSG_SYNC_STEP2];
-                                        resp.extend_from_slice(&encode_var_uint(diff.len()));
-                                        resp.extend_from_slice(&diff);
-                                        let _ = ws_tx.send(Message::Binary(resp.into())).await;
-                                    }
+                                        let mut msg = vec![MSG_SYNC_STEP2];
+                                        msg.extend_from_slice(&encode_var_uint(diff.len()));
+                                        msg.extend_from_slice(&diff);
+                                        Some(msg)
+                                    } else {
+                                        None
+                                    };
+                                    drop(doc);
+                                    result
+                                } else {
+                                    None
+                                };
+                                if let Some(msg) = resp {
+                                    let _ = ws_tx.send(Message::Binary(msg.into())).await;
                                 }
                             }
                             MSG_SYNC_STEP2 | MSG_UPDATE => {
                                 // Client sent an update; apply it and broadcast to others.
-                                if let Some(update_bytes) = decode_prefixed(&data[1..]) {
-                                    if let Ok(update) = Update::decode_v1(&update_bytes) {
-                                        let mut doc = handle.doc.write().await;
+                                // Decode and apply synchronously, then broadcast.
+                                let broadcast_msg = if let Some(update_bytes) = decode_prefixed(&data[1..]) {
+                                    let mut doc = handle.doc.write().await;
+                                    let applied = if let Ok(update) = Update::decode_v1(&update_bytes) {
                                         let _ = doc.transact_mut().apply_update(update);
-                                        // Broadcast to other subscribers.
-                                        let mut broadcast_msg = vec![MSG_UPDATE];
-                                        broadcast_msg.extend_from_slice(&encode_var_uint(update_bytes.len()));
-                                        broadcast_msg.extend_from_slice(&update_bytes);
-                                        let _ = handle.update_tx.send(broadcast_msg);
+                                        true
+                                    } else {
+                                        false
+                                    };
+                                    drop(doc);
+                                    if applied {
+                                        let mut msg = vec![MSG_UPDATE];
+                                        msg.extend_from_slice(&encode_var_uint(update_bytes.len()));
+                                        msg.extend_from_slice(&update_bytes);
+                                        Some(msg)
+                                    } else {
+                                        None
                                     }
+                                } else {
+                                    None
+                                };
+                                if let Some(msg) = broadcast_msg {
+                                    let _ = handle.update_tx.send(msg);
                                 }
                             }
                             MSG_AWARENESS => {

@@ -7,6 +7,8 @@ use BookStack\Entities\Models\Chapter;
 use BookStack\Entities\Queries\ChapterQueries;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Repos\ChapterRepo;
+use BookStack\Entities\Tools\Cloner;
+use BookStack\Exceptions\MoveOperationException;
 use BookStack\Exceptions\PermissionsException;
 use BookStack\Http\ApiController;
 use BookStack\Permissions\Permission;
@@ -40,6 +42,7 @@ class ChapterApiController extends ApiController
         protected ChapterRepo $chapterRepo,
         protected ChapterQueries $queries,
         protected EntityQueries $entityQueries,
+        protected Cloner $cloner,
     ) {
     }
 
@@ -121,6 +124,68 @@ class ChapterApiController extends ApiController
         $updatedChapter = $this->chapterRepo->update($chapter, $requestData);
 
         return response()->json($this->forJsonDisplay($updatedChapter));
+    }
+
+    /**
+     * Move a chapter into a new parent book.
+     * The target must be provided as a string in the format "book:<id>".
+     * Requires chapter-update and chapter-delete permissions on the chapter, and
+     * chapter-create permission on the target book.
+     *
+     * @throws MoveOperationException
+     * @throws PermissionsException
+     */
+    public function move(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'target' => ['required', 'string'],
+        ]);
+
+        $chapter = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::ChapterUpdate, $chapter);
+        $this->checkOwnablePermission(Permission::ChapterDelete, $chapter);
+
+        try {
+            $this->chapterRepo->move($chapter, $request->get('target'));
+        } catch (PermissionsException $exception) {
+            $this->showPermissionError();
+        } catch (MoveOperationException $exception) {
+            return $this->jsonError(trans('errors.selected_book_not_found'), 422);
+        }
+
+        $chapter->refresh();
+
+        return response()->json($this->forJsonDisplay($chapter));
+    }
+
+    /**
+     * Copy a chapter into the given parent book.
+     * The target must be provided as a string in the format "book:<id>".
+     * If no name is provided the original chapter name will be used.
+     * Returns the new chapter with a 201 status code.
+     */
+    public function copy(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'target' => ['required', 'string'],
+            'name'   => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $chapter = $this->queries->findVisibleByIdOrFail(intval($id));
+
+        $targetIdentifier = $request->get('target');
+        $newParentBook = $this->entityQueries->findVisibleByStringIdentifier($targetIdentifier);
+
+        if (!$newParentBook instanceof Book) {
+            return $this->jsonError(trans('errors.selected_book_not_found'), 422);
+        }
+
+        $this->checkOwnablePermission(Permission::ChapterCreate, $newParentBook);
+
+        $newName = $request->get('name') ?: $chapter->name;
+        $chapterCopy = $this->cloner->cloneChapter($chapter, $newParentBook, $newName);
+
+        return response()->json($this->forJsonDisplay($chapterCopy), 201);
     }
 
     /**

@@ -3,9 +3,13 @@
 namespace BookStack\Entities\Controllers;
 
 use BookStack\Activity\Tools\CommentTree;
+use BookStack\Entities\Models\Book;
+use BookStack\Entities\Models\Chapter;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Entities\Repos\PageRepo;
+use BookStack\Entities\Tools\Cloner;
+use BookStack\Exceptions\MoveOperationException;
 use BookStack\Exceptions\PermissionsException;
 use BookStack\Http\ApiController;
 use BookStack\Permissions\Permission;
@@ -39,6 +43,7 @@ class PageApiController extends ApiController
         protected PageRepo $pageRepo,
         protected PageQueries $queries,
         protected EntityQueries $entityQueries,
+        protected Cloner $cloner,
     ) {
     }
 
@@ -155,6 +160,69 @@ class PageApiController extends ApiController
         $updatedPage = $this->pageRepo->update($page, $requestData);
 
         return response()->json($updatedPage->forJsonDisplay());
+    }
+
+    /**
+     * Move a page to a new parent book or chapter.
+     * The target must be provided as a string in the format "book:<id>" or "chapter:<id>".
+     * Requires page-update and page-delete permissions on the page, and page-create
+     * permission on the target parent.
+     *
+     * @throws MoveOperationException
+     * @throws PermissionsException
+     */
+    public function move(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'target' => ['required', 'string'],
+        ]);
+
+        $page = $this->queries->findVisibleByIdOrFail($id);
+        $this->checkOwnablePermission(Permission::PageUpdate, $page);
+        $this->checkOwnablePermission(Permission::PageDelete, $page);
+
+        try {
+            $this->pageRepo->move($page, $request->get('target'));
+        } catch (PermissionsException $exception) {
+            $this->showPermissionError();
+        } catch (MoveOperationException $exception) {
+            return $this->jsonError(trans('errors.selected_book_chapter_not_found'), 422);
+        }
+
+        $page->refresh();
+
+        return response()->json($page->forJsonDisplay());
+    }
+
+    /**
+     * Copy a page into the given parent book or chapter.
+     * The target must be provided as a string in the format "book:<id>" or "chapter:<id>".
+     * If no name is provided the original page name will be used.
+     * Returns the new page with a 201 status code.
+     */
+    public function copy(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'target' => ['required', 'string'],
+            'name'   => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $page = $this->queries->findVisibleByIdOrFail($id);
+        $this->checkOwnablePermission(Permission::PageView, $page);
+
+        $targetIdentifier = $request->get('target');
+        $newParent = $this->entityQueries->findVisibleByStringIdentifier($targetIdentifier);
+
+        if (!$newParent instanceof Book && !$newParent instanceof Chapter) {
+            return $this->jsonError(trans('errors.selected_book_chapter_not_found'), 422);
+        }
+
+        $this->checkOwnablePermission(Permission::PageCreate, $newParent);
+
+        $newName = $request->get('name') ?: $page->name;
+        $pageCopy = $this->cloner->clonePage($page, $newParent, $newName);
+
+        return response()->json($pageCopy->forJsonDisplay(), 201);
     }
 
     /**

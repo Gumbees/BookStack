@@ -9,12 +9,18 @@ use BookStack\Entities\Models\Chapter;
 use BookStack\Entities\Models\Entity;
 use BookStack\Entities\Queries\BookQueries;
 use BookStack\Entities\Queries\BookshelfQueries;
+use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Entities\Repos\BookRepo;
+use BookStack\Entities\Models\Bookshelf;
 use BookStack\Entities\Tools\BookContents;
+use BookStack\Entities\Tools\Cloner;
 use BookStack\Facades\Activity;
 use BookStack\Http\ApiController;
 use BookStack\Permissions\Permission;
+use BookStack\Sorting\BookSortMap;
+use BookStack\Sorting\BookSortMapItem;
+use BookStack\Sorting\BookSorter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Http\Request;
@@ -27,6 +33,8 @@ class BookApiController extends ApiController
         protected BookQueries $queries,
         protected PageQueries $pageQueries,
         protected BookshelfQueries $shelfQueries,
+        protected EntityQueries $entityQueries,
+        protected Cloner $cloner,
     ) {
     }
 
@@ -137,6 +145,124 @@ class BookApiController extends ApiController
         $this->bookRepo->destroy($book);
 
         return response('', 204);
+    }
+
+    /**
+     * Move a book to a target shelf, or detach it from all shelves.
+     * The target must be provided as a string in the format "shelf:<id>".
+     * To detach the book from all shelves without placing it on another, pass null or "none".
+     * Requires book-update on the book and bookshelf-update on the target shelf.
+     *
+     * @throws ValidationException
+     */
+    public function move(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'target' => ['nullable', 'string'],
+        ]);
+
+        $book = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::BookUpdate, $book);
+
+        $targetRaw = $request->get('target');
+
+        // Detach from all shelves when target is null or "none"
+        if (!$targetRaw || strtolower($targetRaw) === 'none') {
+            $currentShelves = $book->shelves()->scopes('visible')->get();
+            foreach ($currentShelves as $shelf) {
+                $this->checkOwnablePermission(Permission::BookshelfUpdate, $shelf);
+                $shelf->books()->detach($book->id);
+                Activity::add(ActivityType::BOOKSHELF_UPDATE, $shelf);
+            }
+
+            return response()->json($this->forJsonDisplay($book));
+        }
+
+        $targetEntity = $this->entityQueries->findVisibleByStringIdentifier($targetRaw);
+
+        if (!$targetEntity instanceof Bookshelf) {
+            return $this->jsonError(trans('errors.bookshelf_not_found'), 422);
+        }
+
+        $this->checkOwnablePermission(Permission::BookshelfUpdate, $targetEntity);
+
+        // Detach from existing shelves then attach to target
+        $currentShelves = $book->shelves()->scopes('visible')->get();
+        foreach ($currentShelves as $currentShelf) {
+            if ($currentShelf->id !== $targetEntity->id) {
+                $this->checkOwnablePermission(Permission::BookshelfUpdate, $currentShelf);
+                $currentShelf->books()->detach($book->id);
+                Activity::add(ActivityType::BOOKSHELF_UPDATE, $currentShelf);
+            }
+        }
+
+        $targetEntity->appendBook($book);
+        Activity::add(ActivityType::BOOKSHELF_UPDATE, $targetEntity);
+
+        return response()->json($this->forJsonDisplay($book));
+    }
+
+    /**
+     * Copy a book, duplicating all its chapters and pages.
+     * If no name is provided the original book name will be used.
+     * Requires book-create-all permission.
+     * Returns the new book with a 201 status code.
+     */
+    public function copy(Request $request, string $id)
+    {
+        $this->validate($request, [
+            'name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $book = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::BookView, $book);
+        $this->checkPermission(Permission::BookCreateAll);
+
+        $newName = $request->get('name') ?: $book->name;
+        $bookCopy = $this->cloner->cloneBook($book, $newName);
+
+        return response()->json($this->forJsonDisplay($bookCopy), 201);
+    }
+
+    /**
+     * Update the sort order of content within a book.
+     * Provide an array of items in the "order" property, each with an "id", "type" ("page" or "chapter"),
+     * "sort" (integer priority), and optionally "chapter_id" (integer, for pages within a chapter).
+     * Items not listed retain their current position and book assignment.
+     * Requires book-update permission. Items that the user lacks permission to move are silently skipped.
+     *
+     * @throws ValidationException
+     */
+    public function sort(Request $request, BookSorter $sorter, string $id)
+    {
+        $this->validate($request, [
+            'order'              => ['required', 'array'],
+            'order.*.id'         => ['required', 'integer'],
+            'order.*.type'       => ['required', 'string', 'in:page,chapter'],
+            'order.*.sort'       => ['required', 'integer'],
+            'order.*.chapter_id' => ['nullable', 'integer'],
+        ]);
+
+        $book = $this->queries->findVisibleByIdOrFail(intval($id));
+        $this->checkOwnablePermission(Permission::BookUpdate, $book);
+
+        $sortMap = new BookSortMap();
+        foreach ($request->get('order') as $item) {
+            $sortMap->addItem(new BookSortMapItem(
+                intval($item['id']),
+                intval($item['sort']),
+                isset($item['chapter_id']) ? (intval($item['chapter_id']) ?: null) : null,
+                $item['type'],
+                $book->id,
+            ));
+        }
+
+        $booksInvolved = $sorter->sortUsingMap($sortMap);
+        foreach ($booksInvolved as $bookInvolved) {
+            Activity::add(ActivityType::BOOK_SORT, $bookInvolved);
+        }
+
+        return response()->json($this->forJsonDisplay($book->refresh()));
     }
 
     protected function forJsonDisplay(Book $book): Book

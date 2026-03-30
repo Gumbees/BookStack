@@ -1,0 +1,7 @@
+{
+	"order": [
+		{"id": 1, "type": "chapter", "sort": 0},
+		{"id": 5, "type": "page", "sort": 1, "chapter_id": null},
+		{"id": 3, "type": "page", "sort": 0, "chapter_id": 1}
+	]
+}

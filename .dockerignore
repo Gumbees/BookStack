@@ -1,0 +1,32 @@
+# Git and IDE metadata
+.git
+.github
+.claude
+
+# Node modules (not needed — no npm build step in this Dockerfile)
+node_modules
+
+# Storage directories that should never be baked into an image
+storage/logs
+storage/uploads
+storage/backups
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+
+# Environment files
+.env
+.env.*
+
+# Test suite
+tests
+
+# Documentation
+*.md
+*.txt
+
+# Compose files (not needed in the build context)
+docker-compose*.yml
+
+# Dev tooling
+dev

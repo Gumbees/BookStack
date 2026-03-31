@@ -3,16 +3,18 @@
 #
 # Usage:
 #   ./docker/build.sh               # build with :latest tag
-#   ./docker/build.sh 25.12.1       # build with explicit version tag
-#   ./docker/build.sh 25.12.1 push  # build and push to registry
+#   ./docker/build.sh 26.03-dev       # build with explicit version tag
+#   ./docker/build.sh 26.03-dev push  # build and push to GHCR
+#   REGISTRY=docker.io/gumbees ./docker/build.sh 26.03-dev push  # push to Docker Hub instead
 
 set -euo pipefail
 
 VERSION="${1:-latest}"
 PUSH="${2:-}"
 
-BOOKSTACK_IMAGE="gumbees/bookstack:${VERSION}"
-COLLAB_IMAGE="gumbees/bookstack-collab:${VERSION}"
+REGISTRY="${REGISTRY:-ghcr.io/gumbees}"
+BOOKSTACK_IMAGE="${REGISTRY}/bookstack:${VERSION}"
+COLLAB_IMAGE="${REGISTRY}/bookstack-collab:${VERSION}"
 
 # Resolve the repo root (parent of this script's directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

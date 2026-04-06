@@ -76,7 +76,7 @@ Hinweis: Benutzer können ihre E-Mail Adresse nach erfolgreicher Registrierung �
     'reg_confirm_restrict_domain_placeholder' => 'Keine Einschränkung gesetzt',
 
     // Sorting Settings
-    'sorting' => 'Listen & Sortieren',
+    'sorting' => 'Listen und Sortierung',
     'sorting_book_default' => 'Standardregel für die Sortierung von Büchern',
     'sorting_book_default_desc' => 'Wähle die Standard-Sortierregel aus, die auf neue Bücher angewendet werden soll. Dies wirkt sich nicht auf bestehende Bücher aus und kann pro Buch überschrieben werden.',
     'sorting_rules' => 'Sortierregeln',

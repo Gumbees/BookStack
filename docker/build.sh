@@ -12,7 +12,7 @@ set -euo pipefail
 VERSION="${1:-latest}"
 PUSH="${2:-}"
 
-REGISTRY="${REGISTRY:-ghcr.io/gumbees}"
+REGISTRY="${REGISTRY:-ghcr.io/bees-roadhouse}"
 BOOKSTACK_IMAGE="${REGISTRY}/bookstack:${VERSION}"
 COLLAB_IMAGE="${REGISTRY}/bookstack-collab:${VERSION}"
 

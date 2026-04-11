@@ -71,6 +71,10 @@ COPY --from=js-builder /build/public/dist/ /app/www/public/dist/
 # Overlay WASM client from stage 2
 COPY --from=wasm-builder /build/public/dist/collab-wasm/ /app/www/public/dist/collab-wasm/
 
+# Ensure our fork's migrations run on container start
+COPY docker/99-run-migrations.sh /custom-cont-init.d/99-run-migrations.sh
+RUN chmod +x /custom-cont-init.d/99-run-migrations.sh
+
 # Ensure all overlaid files are world-readable.
 # The linuxserver init process runs as abc (uid 99) but PHP-FPM worker threads
 # need read access to these directories as well.

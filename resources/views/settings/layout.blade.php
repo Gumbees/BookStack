@@ -14,6 +14,9 @@
                     <a href="{{ url('/settings/customization') }}" class="{{ $category === 'customization' ? 'active' : '' }}">@icon('palette') {{ trans('settings.app_customization') }}</a>
                     <a href="{{ url('/settings/registration') }}" class="{{ $category === 'registration' ? 'active' : '' }}">@icon('security') {{ trans('settings.reg_settings') }}</a>
                     <a href="{{ url('/settings/sorting') }}" class="{{ $category === 'sorting' ? 'active' : '' }}">@icon('sort') {{ trans('settings.sorting') }}</a>
+                    @if(\BookStack\OAuth\OAuthService::enabled() || $category === 'oauth')
+                        <a href="{{ url('/settings/oauth') }}" class="{{ $category === 'oauth' ? 'active' : '' }}">@icon('lock-open') {{ trans('settings.oauth_settings') }}</a>
+                    @endif
                     <a href="{{ url('/settings/notifications') }}" class="{{ $category === 'notifications' ? 'active' : '' }}">@icon('notifications') Notifications</a>
                 </nav>
 

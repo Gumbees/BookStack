@@ -15,6 +15,7 @@ class OAuthAuthCode extends Model
         'redirect_uri',
         'code_challenge',
         'code_challenge_method',
+        'scopes',
         'expires_at',
     ];
 

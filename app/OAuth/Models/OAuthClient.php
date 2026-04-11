@@ -12,10 +12,11 @@ class OAuthClient extends Model implements Loggable
 {
     protected $table = 'oauth_clients';
 
-    protected $fillable = ['name', 'instance_approved'];
+    protected $fillable = ['name', 'instance_approved', 'confidential'];
 
     protected $casts = [
         'instance_approved' => 'boolean',
+        'confidential' => 'boolean',
     ];
 
     public function accessTokens(): HasMany

@@ -33,6 +33,7 @@ class OAuthController extends Controller
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'code_challenge_methods_supported' => ['S256'],
             'token_endpoint_auth_methods_supported' => ['none', 'client_secret_post'],
+            'scopes_supported' => OAuthService::VALID_SCOPES,
         ]);
     }
 
@@ -52,12 +53,12 @@ class OAuthController extends Controller
 
     /**
      * Dynamic Client Registration (RFC 7591).
-     * Gated by OAUTH_DYNAMIC_REGISTRATION env setting (default: disabled).
+     * Gated by admin setting / OAUTH_DYNAMIC_REGISTRATION env setting (default: disabled).
      */
     public function register(Request $request): JsonResponse
     {
         // H-2: Gate dynamic client registration
-        if (!config('oauth-provider.dynamic_registration', false)) {
+        if (!OAuthService::dynamicRegistrationEnabled()) {
             return response()->json([
                 'error' => 'registration_not_supported',
                 'error_description' => 'Dynamic client registration is not enabled on this server',
@@ -93,19 +94,27 @@ class OAuthController extends Controller
         }
 
         $clientName = $data['client_name'];
-        $client = $this->oauthService->registerClient($clientName, $redirectUris);
+        $confidential = ($data['token_endpoint_auth_method'] ?? 'none') === 'client_secret_post';
+
+        $result = $this->oauthService->registerClient($clientName, $redirectUris, null, $confidential);
+        $client = $result['client'];
 
         $now = now()->timestamp;
 
         $response = [
             'client_id' => $client->client_id,
             'client_id_issued_at' => $now,
-            'token_endpoint_auth_method' => 'none',
+            'token_endpoint_auth_method' => $confidential ? 'client_secret_post' : 'none',
             'grant_types' => ['authorization_code', 'refresh_token'],
             'response_types' => ['code'],
             'redirect_uris' => $redirectUris,
             'client_name' => $clientName,
         ];
+
+        if ($confidential && $result['secret']) {
+            $response['client_secret'] = $result['secret'];
+            $response['client_secret_expires_at'] = 0;
+        }
 
         if (isset($data['scope'])) {
             $response['scope'] = $data['scope'];
@@ -125,6 +134,7 @@ class OAuthController extends Controller
         $state = $request->query('state');
         $codeChallenge = $request->query('code_challenge');
         $codeChallengeMethod = $request->query('code_challenge_method');
+        $scope = $request->query('scope');
 
         if ($responseType !== 'code') {
             return $this->oauthError('unsupported_response_type', 'Only response_type=code is supported');
@@ -153,6 +163,12 @@ class OAuthController extends Controller
             return $this->oauthError('invalid_request', 'state parameter must not exceed 512 characters');
         }
 
+        // Validate scopes
+        $validatedScopes = $this->oauthService->validateScopes($scope);
+        if ($validatedScopes === null) {
+            return $this->oauthError('invalid_scope', 'One or more requested scopes are invalid. Valid scopes: ' . implode(', ', OAuthService::VALID_SCOPES));
+        }
+
         $client = $this->oauthService->findClient($clientId);
         if (!$client) {
             return $this->oauthError('invalid_client', 'Unknown client_id');
@@ -179,6 +195,7 @@ class OAuthController extends Controller
                 $redirectUri,
                 $codeChallenge,
                 $codeChallengeMethod ?: 'S256',
+                $validatedScopes,
             );
 
             $queryParams = ['code' => $code];
@@ -199,11 +216,15 @@ class OAuthController extends Controller
             'state' => $state,
             'code_challenge' => $codeChallenge,
             'code_challenge_method' => $codeChallengeMethod ?: 'S256',
+            'scopes' => $validatedScopes,
         ]);
+
+        $scopeList = explode(' ', $validatedScopes);
 
         return response(view('oauth.authorize', [
             'clientName' => $client->name ?: 'An application',
             'userName' => $user->name,
+            'scopes' => $scopeList,
         ]));
     }
 
@@ -256,6 +277,7 @@ class OAuthController extends Controller
             $params['redirect_uri'],
             $params['code_challenge'],
             $params['code_challenge_method'],
+            $params['scopes'] ?? OAuthService::DEFAULT_SCOPES,
         );
 
         $queryParams = ['code' => $code];
@@ -292,6 +314,7 @@ class OAuthController extends Controller
         $clientId = $request->input('client_id');
         $redirectUri = $request->input('redirect_uri');
         $codeVerifier = $request->input('code_verifier');
+        $clientSecret = $request->input('client_secret');
 
         if (!$code || !$clientId || !$redirectUri) {
             return response()->json([
@@ -300,7 +323,7 @@ class OAuthController extends Controller
             ], 400);
         }
 
-        $tokens = $this->oauthService->exchangeAuthCode($code, $clientId, $redirectUri, $codeVerifier);
+        $tokens = $this->oauthService->exchangeAuthCode($code, $clientId, $redirectUri, $codeVerifier, $clientSecret);
 
         if (!$tokens) {
             return response()->json([
@@ -314,6 +337,7 @@ class OAuthController extends Controller
             'token_type' => 'bearer',
             'expires_in' => $tokens['expires_in'],
             'refresh_token' => $tokens['refresh_token'],
+            'scope' => $tokens['scope'],
         ])->header('Cache-Control', 'no-store')->header('Pragma', 'no-cache');
     }
 
@@ -342,6 +366,7 @@ class OAuthController extends Controller
             'token_type' => 'bearer',
             'expires_in' => $tokens['expires_in'],
             'refresh_token' => $tokens['refresh_token'],
+            'scope' => $tokens['scope'],
         ])->header('Cache-Control', 'no-store')->header('Pragma', 'no-cache');
     }
 

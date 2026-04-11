@@ -334,8 +334,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings/webhooks/{id}/delete', [ActivityControllers\WebhookController::class, 'delete']);
     Route::delete('/settings/webhooks/{id}', [ActivityControllers\WebhookController::class, 'destroy']);
 
-    // OAuth Clients (admin)
+    // OAuth Clients (admin) — create routes must precede {id} routes
     Route::get('/settings/oauth-clients', [OAuthControllers\OAuthClientController::class, 'index']);
+    Route::get('/settings/oauth-clients/create', [OAuthControllers\OAuthClientController::class, 'create']);
+    Route::post('/settings/oauth-clients', [OAuthControllers\OAuthClientController::class, 'store']);
     Route::get('/settings/oauth-clients/{id}', [OAuthControllers\OAuthClientController::class, 'show']);
     Route::put('/settings/oauth-clients/{id}', [OAuthControllers\OAuthClientController::class, 'update']);
     Route::get('/settings/oauth-clients/{id}/delete', [OAuthControllers\OAuthClientController::class, 'delete']);

@@ -399,4 +399,44 @@ return [
     'oauth_authorized_since' => 'Authorized since',
     'oauth_never_used' => 'Never used',
     'oauth_no_authorized_apps' => 'No external applications have been authorized.',
+
+    // OAuth Client Creation
+    'oauth_client_create' => 'Create OAuth Client',
+    'oauth_client_created' => 'OAuth client successfully created.',
+    'oauth_client_create_redirect_desc' => 'Enter one redirect URI per line. Must use HTTPS, or HTTP for localhost only.',
+    'oauth_client_create_redirect_required' => 'At least one redirect URI is required.',
+    'oauth_client_create_redirect_https' => 'Redirect URIs must use HTTPS (HTTP is only allowed for localhost/127.0.0.1).',
+    'oauth_client_create_secret_warning' => 'If you enable "Confidential Client", a client secret will be generated and shown only once after creation. Store it securely.',
+    'oauth_confidential' => 'Confidential Client',
+    'oauth_confidential_desc' => 'A confidential client uses a client secret for token exchange. Enable this for server-side applications that can securely store secrets.',
+    'oauth_client_secret_label' => 'Client Secret',
+    'oauth_client_secret_once_warning' => 'This secret will only be shown once. Copy it now and store it securely. It cannot be retrieved later.',
+
+    // OAuth Scopes
+    'oauth_scope_read' => 'Read access to all content the user can see',
+    'oauth_scope_write' => 'Write, create, update, and delete content',
+    'oauth_scope_admin' => 'Admin operations (settings, users, etc.)',
+
+    // OAuth Authorization Screen
+    'oauth_authorize_title' => 'Authorize Application',
+    'oauth_authorize_request' => 'is requesting access to your BookStack account as',
+    'oauth_authorize_scopes' => 'This application is requesting the following permissions:',
+    'oauth_authorize_approve' => 'Authorize',
+
+    // OAuth Settings
+    'oauth_settings' => 'OAuth',
+    'oauth_settings_enabled' => 'OAuth Provider Enabled',
+    'oauth_settings_enabled_desc' => 'Enable the OAuth 2.0 Authorization Server endpoints, allowing external applications to authenticate users against this BookStack instance.',
+    'oauth_settings_dynamic_reg' => 'Dynamic Client Registration',
+    'oauth_settings_dynamic_reg_desc' => 'Allow external applications to register themselves as OAuth clients via the /oauth/register endpoint (RFC 7591). When disabled, clients must be created manually by an admin.',
+    'oauth_settings_token_lifetimes' => 'Token Lifetimes',
+    'oauth_settings_access_token_ttl' => 'Access Token Lifetime (days)',
+    'oauth_settings_access_token_ttl_desc' => 'How long access tokens remain valid. Longer lifetimes reduce re-authentication frequency for clients that do not reliably refresh tokens.',
+    'oauth_settings_refresh_token_ttl' => 'Refresh Token Lifetime (days)',
+    'oauth_settings_refresh_token_ttl_desc' => 'How long refresh tokens remain valid. After expiry, users must re-authorize the application.',
+    'oauth_settings_default_scopes' => 'Default Scopes',
+    'oauth_settings_default_scopes_desc' => 'Space-separated scopes applied when no scope is requested. Valid scopes: read, write, admin.',
+    'oauth_settings_sso' => 'SSO Integration',
+    'oauth_settings_honor_sso' => 'Honor SSO Session Lifetime',
+    'oauth_settings_honor_sso_desc' => 'When the instance uses OIDC or SAML for authentication, cap OAuth access token lifetimes to the configured session lifetime. This prevents OAuth tokens from outliving the SSO session that granted them.',
 ];

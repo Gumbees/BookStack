@@ -10,6 +10,9 @@
 
             <div class="flex-container-row items-center justify-space-between wrap">
                 <h1 class="list-heading">{{ trans('settings.oauth_clients') }}</h1>
+                <div>
+                    <a href="{{ url('/settings/oauth-clients/create') }}" class="button outline">{{ trans('settings.oauth_client_create') }}</a>
+                </div>
             </div>
 
             <p class="text-muted">{{ trans('settings.oauth_clients_desc') }}</p>

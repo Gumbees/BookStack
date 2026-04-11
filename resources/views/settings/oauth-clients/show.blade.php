@@ -14,6 +14,14 @@
                 </div>
             </div>
 
+            @if($secret)
+                <div class="card content-wrap auto-height mb-m" style="border-left: 3px solid var(--color-warning);">
+                    <p class="text-warn"><strong>{{ trans('settings.oauth_client_secret_label') }}</strong></p>
+                    <p class="text-warn text-small">{{ trans('settings.oauth_client_secret_once_warning') }}</p>
+                    <input type="text" readonly="readonly" value="{{ $secret }}" onclick="this.select()">
+                </div>
+            @endif
+
             <form action="{{ $client->getUrl() }}" method="POST">
                 {!! csrf_field() !!}
                 {!! method_field('PUT') !!}
@@ -28,6 +36,12 @@
                         <input type="text" id="client_id" value="{{ $client->client_id }}" disabled readonly>
                     </div>
                 </div>
+
+                @if($client->confidential)
+                    <div class="mt-m">
+                        <span class="text-muted text-small">@icon('lock-open') {{ trans('settings.oauth_confidential') }}</span>
+                    </div>
+                @endif
 
                 <div class="mt-m">
                     <label class="toggle-switch-list">

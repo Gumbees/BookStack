@@ -1,6 +1,7 @@
 import { useNavigate, A } from '@solidjs/router';
 import { For, Show, createSignal, createEffect, type ParentProps } from 'solid-js';
 import { useAuth } from './auth';
+import { branding, loadBranding, logoUrl } from './branding';
 
 function Header() {
   const auth = useAuth();
@@ -21,7 +22,13 @@ function Header() {
   return (
     <header class="app-header">
       <A href="/" class="brand">
-        <span class="brand-mark">▤</span> BookStack
+        <Show
+          when={branding().has_logo}
+          fallback={<span class="brand-mark">▤</span>}
+        >
+          <img class="brand-logo" src={logoUrl(auth.activeOrg()?.org_id ?? null)} alt="" />
+        </Show>
+        {branding().name}
       </A>
       <form class="search-form" onSubmit={submitSearch}>
         <input
@@ -100,6 +107,11 @@ export function Layout(props: ParentProps) {
 
   createEffect(() => {
     if (!auth.loggedIn()) navigate('/login', { replace: true });
+  });
+
+  // Theme the page for the active org (colors + logo + display name).
+  createEffect(() => {
+    loadBranding(auth.activeOrg()?.org_id ?? null);
   });
 
   return (

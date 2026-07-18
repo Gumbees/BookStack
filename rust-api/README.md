@@ -98,6 +98,18 @@ instructions are all org-scoped. Existing data migrates into a seeded
 - Org management: `POST /api/orgs` (any user; creator becomes admin),
   member add/remove with roles, instance admins act as admin everywhere.
 
+## Per-org branding
+
+Admin → org tab → **Branding** (and Admin → Global → **Global branding**):
+display name, primary / primary-dark / header-text colors, and a logo
+(png/jpeg/webp ≤ 512 KB, stored in Postgres). Resolution is built-in
+defaults ← global branding ← org branding, so orgs inherit the instance
+look until they override it. The SPA themes itself at runtime via CSS
+custom properties — switching orgs restyles the header, buttons, and links
+instantly — and the login page wears the global branding. Reads are public
+(`GET /api/branding?org_id=` and `/api/branding/logo`); writes are
+org-admin / system-admin.
+
 ## Sign-in providers (OAuth/OIDC SSO)
 
 `Sign in with …` buttons come from **auth providers** stored at two scopes:

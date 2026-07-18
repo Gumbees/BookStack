@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod branding;
 pub mod content;
 pub mod mcp;
 pub mod oauth;
@@ -28,6 +29,13 @@ pub fn router(state: AppState) -> Router {
         .route("/orgs/current", get(org::current))
         .route("/orgs/{org_id}/members", get(org::members).post(org::add_member))
         .route("/orgs/{org_id}/members/{member_id}", delete(org::remove_member))
+        // branding (reads public; login page + header theming)
+        .route("/branding", get(branding::effective))
+        .route("/branding/logo", get(branding::logo))
+        .route("/orgs/{org_id}/branding", get(branding::get_org_branding).put(branding::set_org_branding))
+        .route("/orgs/{org_id}/branding/logo", post(branding::upload_org_logo).delete(branding::delete_org_logo))
+        .route("/admin/branding", get(branding::get_global_branding).put(branding::set_global_branding))
+        .route("/admin/branding/logo", post(branding::upload_global_logo).delete(branding::delete_global_logo))
         // SSO login (public: the login page needs these before auth)
         .route("/auth/providers", get(sso::public_providers))
         .route("/auth/oidc/{id}/start", get(sso::start))

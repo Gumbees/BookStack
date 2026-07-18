@@ -3,6 +3,7 @@ import { useNavigate } from '@solidjs/router';
 import { useAuth } from '../auth';
 import { api } from '../api';
 import type { PublicProvider } from '../types';
+import { branding, loadBranding, logoUrl } from '../branding';
 
 export default function Login() {
   const auth = useAuth();
@@ -14,6 +15,8 @@ export default function Login() {
   const [providers] = createResource(() =>
     api.get<{ data: PublicProvider[] }>('/auth/providers').catch(() => ({ data: [] })),
   );
+
+  onMount(() => loadBranding(null));
 
   // The SSO callback lands here with #sso_token=… (or #sso_error=…).
   onMount(async () => {
@@ -53,7 +56,10 @@ export default function Login() {
     <div class="login-wrap">
       <form class="login-card" onSubmit={submit}>
         <h1>
-          <span class="brand-mark">▤</span> BookStack
+          <Show when={branding().has_logo} fallback={<span class="brand-mark">▤</span>}>
+            <img class="brand-logo login-logo" src={logoUrl(null)} alt="" />
+          </Show>{' '}
+          {branding().name}
         </h1>
         <p class="login-sub">Sign in to your knowledge base</p>
         <label>

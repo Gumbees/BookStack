@@ -1,5 +1,6 @@
 pub mod auth_providers;
 pub mod books;
+pub mod branding;
 pub mod chapters;
 pub mod comments;
 pub mod directory;

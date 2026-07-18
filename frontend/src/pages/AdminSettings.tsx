@@ -1,5 +1,6 @@
-import { createResource, createSignal, For, onCleanup, Show } from 'solid-js';
-import { api } from '../api';
+import { createEffect, createResource, createSignal, For, onCleanup, Show } from 'solid-js';
+import { api, getToken } from '../api';
+import { loadBranding } from '../branding';
 import { useAuth } from '../auth';
 import type { AuthProvider, OrgMemberInfo } from '../types';
 
@@ -349,6 +350,15 @@ function OrgTab() {
       </section>
 
       <section class="admin-card">
+        <h2>Branding</h2>
+        <p class="muted-note">
+          Logo and colors for <strong>{auth.activeOrg()?.name}</strong>. Unset fields inherit the
+          global branding.
+        </p>
+        <BrandingCard path={() => `/orgs/${orgId()}/branding`} onSaved={() => loadBranding(orgId())} />
+      </section>
+
+      <section class="admin-card">
         <h2>New organization</h2>
         <p class="muted-note">Create a separate org — you become its admin.</p>
         <form class="inline-form" onSubmit={createOrg}>
@@ -396,6 +406,12 @@ function GlobalTab() {
           When unchecked, orgs inherit the global providers below and cannot define their own
           (system admins can still manage any org's providers).
         </p>
+      </section>
+
+      <section class="admin-card">
+        <h2>Global branding</h2>
+        <p class="muted-note">Default logo and colors for every org (and the login page) unless an org overrides them.</p>
+        <BrandingCard path={() => '/admin/branding'} onSaved={() => loadBranding(null)} />
       </section>
 
       <section class="admin-card">
@@ -528,5 +544,115 @@ function ProviderManager(props: {
         </div>
       </form>
     </div>
+  );
+}
+
+
+interface BrandingScope {
+  name?: string;
+  primary_color?: string;
+  primary_dark_color?: string;
+  header_text_color?: string;
+}
+
+function BrandingCard(props: { path: () => string; onSaved: () => void }) {
+  const [scope, { refetch }] = createResource(props.path, p => api.get<BrandingScope>(p));
+  const [name, setName] = createSignal('');
+  const [primary, setPrimary] = createSignal('#206ea7');
+  const [primaryDark, setPrimaryDark] = createSignal('#0f4d79');
+  const [headerText, setHeaderText] = createSignal('#ffffff');
+  const [notice, setNotice] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    const current = scope();
+    if (!current) return;
+    setName(current.name ?? '');
+    setPrimary(current.primary_color ?? '#206ea7');
+    setPrimaryDark(current.primary_dark_color ?? '#0f4d79');
+    setHeaderText(current.header_text_color ?? '#ffffff');
+  });
+
+  const save = async (e: Event) => {
+    e.preventDefault();
+    setNotice(null);
+    try {
+      await api.put(props.path(), {
+        name: name(),
+        primary_color: primary(),
+        primary_dark_color: primaryDark(),
+        header_text_color: headerText(),
+      });
+      await refetch();
+      props.onSaved();
+      setNotice('Saved.');
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'save failed');
+    }
+  };
+
+  const uploadLogo = async (e: Event) => {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    setNotice(null);
+    try {
+      const res = await fetch(`/api${props.path()}/logo`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          'Content-Type': file.type || 'image/png',
+        },
+        body: file,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error?.message ?? `upload failed (${res.status})`);
+      }
+      props.onSaved();
+      setNotice('Logo uploaded.');
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'upload failed');
+    } finally {
+      input.value = '';
+    }
+  };
+
+  const removeLogo = async () => {
+    setNotice(null);
+    await api.delete(`${props.path()}/logo`);
+    props.onSaved();
+    setNotice('Logo removed.');
+  };
+
+  return (
+    <form onSubmit={save}>
+      <div class="branding-grid">
+        <label>
+          Display name
+          <input type="text" placeholder="BookStack" value={name()} onInput={e => setName(e.currentTarget.value)} />
+        </label>
+        <label>
+          Primary color
+          <input type="color" value={primary()} onInput={e => setPrimary(e.currentTarget.value)} />
+        </label>
+        <label>
+          Primary dark
+          <input type="color" value={primaryDark()} onInput={e => setPrimaryDark(e.currentTarget.value)} />
+        </label>
+        <label>
+          Header text
+          <input type="color" value={headerText()} onInput={e => setHeaderText(e.currentTarget.value)} />
+        </label>
+      </div>
+      <Show when={notice()}>{message => <p class="muted-note">{message()}</p>}</Show>
+      <div class="btn-row" style={{ 'flex-wrap': 'wrap' }}>
+        <button class="btn btn-primary" type="submit">Save branding</button>
+        <label class="btn" style={{ cursor: 'pointer' }}>
+          Upload logo (png/jpeg/webp, ≤512KB)
+          <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={uploadLogo} />
+        </label>
+        <button class="btn btn-danger" type="button" onClick={removeLogo}>Remove logo</button>
+      </div>
+    </form>
   );
 }

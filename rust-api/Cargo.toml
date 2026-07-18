@@ -12,6 +12,7 @@ bookstack-core = { path = "crates/bookstack-core" }
 bookstack-collab = { path = "crates/bookstack-collab" }
 bookstack-mcp = { path = "crates/bookstack-mcp" }
 bookstack-semantic = { path = "crates/bookstack-semantic" }
+bookstack-ops = { path = "crates/bookstack-ops" }
 
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws", "macros"] }

@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, For, onCleanup, Show } from 'solid-js';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import type { AuthProvider, OrgMemberInfo } from '../types';
@@ -8,7 +8,7 @@ import type { AuthProvider, OrgMemberInfo } from '../types';
 /// plus instance-wide auth providers, inherited by every org by default).
 export default function AdminSettings() {
   const auth = useAuth();
-  const [tab, setTab] = createSignal<'org' | 'global'>('org');
+  const [tab, setTab] = createSignal<'org' | 'global' | 'data'>('org');
 
   return (
     <div>
@@ -25,12 +25,202 @@ export default function AdminSettings() {
             Global
           </button>
         </Show>
+        <button class={`tab ${tab() === 'data' ? 'tab-active' : ''}`} onClick={() => setTab('data')}>
+          Data
+        </button>
       </div>
       <Show when={tab() === 'org'}>
         <OrgTab />
       </Show>
       <Show when={tab() === 'global'}>
         <GlobalTab />
+      </Show>
+      <Show when={tab() === 'data'}>
+        <DataTab />
+      </Show>
+    </div>
+  );
+}
+
+interface BackupRow {
+  id: number;
+  scope: string;
+  org_id: number | null;
+  target: string;
+  location: string;
+  size_bytes: number;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
+interface ImportRow {
+  id: number;
+  org_id: number;
+  source_url: string;
+  status: string;
+  progress: Record<string, unknown>;
+}
+
+function DataTab() {
+  const auth = useAuth();
+  const orgId = () => auth.activeOrg()?.org_id ?? 0;
+
+  const [imports, { refetch: refetchImports }] = createResource(() =>
+    api.get<{ data: ImportRow[] }>('/admin/imports'),
+  );
+  const [backups, { refetch: refetchBackups }] = createResource(() =>
+    api.get<{ data: BackupRow[] }>('/admin/backups'),
+  );
+  const [walship] = createResource(() =>
+    auth.isSystemAdmin()
+      ? api.get<Record<string, unknown>>('/admin/walship').catch(() => ({ enabled: false }))
+      : Promise.resolve(null),
+  );
+
+  const [srcUrl, setSrcUrl] = createSignal('');
+  const [tokenId, setTokenId] = createSignal('');
+  const [tokenSecret, setTokenSecret] = createSignal('');
+  const [rpm, setRpm] = createSignal('90');
+  const [notice, setNotice] = createSignal<string | null>(null);
+
+  // Live progress while any job runs.
+  const timer = setInterval(() => {
+    if (imports()?.data?.some(j => j.status === 'running')) refetchImports();
+    if (backups()?.data?.some(b => b.status === 'running')) refetchBackups();
+  }, 3000);
+  onCleanup(() => clearInterval(timer));
+
+  const startImport = async (e: Event) => {
+    e.preventDefault();
+    setNotice(null);
+    try {
+      await api.post('/admin/import', {
+        base_url: srcUrl(),
+        token_id: tokenId(),
+        token_secret: tokenSecret(),
+        org_id: orgId(),
+        rate_limit_per_minute: Number(rpm()) || 90,
+      });
+      setSrcUrl('');
+      setTokenId('');
+      setTokenSecret('');
+      await refetchImports();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'import failed to start');
+    }
+  };
+
+  const startBackup = async (scope: string, target: string) => {
+    setNotice(null);
+    try {
+      await api.post('/admin/backups', {
+        scope,
+        target,
+        org_id: scope === 'org' ? orgId() : undefined,
+      });
+      await refetchBackups();
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'backup failed to start');
+    }
+  };
+
+  const verify = async (id: number) => {
+    setNotice(null);
+    try {
+      const report = await api.post<Record<string, unknown>>(`/admin/backups/${id}/verify`);
+      setNotice(`Backup #${id} verified: ${JSON.stringify(report)}`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : 'verify failed');
+    }
+  };
+
+  return (
+    <div class="admin-sections">
+      <Show when={notice()}>{message => <div class="form-error">{message()}</div>}</Show>
+
+      <section class="admin-card">
+        <h2>Import from a BookStack instance</h2>
+        <p class="muted-note">
+          Pulls shelves, books, chapters and pages (markdown via the export API) into{' '}
+          <strong>{auth.activeOrg()?.name}</strong>, pacing requests to respect the source's API
+          rate limit and backing off on 429 responses. Images, attachments and drafts are skipped.
+        </p>
+        <form class="inline-form" onSubmit={startImport}>
+          <input placeholder="https://docs.example.com" value={srcUrl()} onInput={e => setSrcUrl(e.currentTarget.value)} required />
+          <input placeholder="API token ID" value={tokenId()} onInput={e => setTokenId(e.currentTarget.value)} required />
+          <input placeholder="API token secret" type="password" value={tokenSecret()} onInput={e => setTokenSecret(e.currentTarget.value)} required />
+          <input placeholder="req/min" style={{ 'max-width': '90px', flex: '0 0 auto' }} value={rpm()} onInput={e => setRpm(e.currentTarget.value)} />
+          <button class="btn btn-primary" type="submit">Start import</button>
+        </form>
+        <For each={imports()?.data}>
+          {job => (
+            <div class="job-row">
+              <span class={`status-pill status-${job.status}`}>{job.status}</span>
+              <span class="mono small">#{job.id} {job.source_url}</span>
+              <span class="small muted-note">{JSON.stringify(job.progress)}</span>
+            </div>
+          )}
+        </For>
+      </section>
+
+      <section class="admin-card">
+        <h2>Backups</h2>
+        <p class="muted-note">
+          Always encrypted (XChaCha20-Poly1305, key from BACKUP_ENCRYPTION_KEY). Per-org backups
+          go to object storage; global and SQL backups may also target the server filesystem.
+        </p>
+        <div class="btn-row" style={{ 'flex-wrap': 'wrap' }}>
+          <button class="btn" onClick={() => startBackup('org', 'object_storage')}>
+            Backup this org → object storage
+          </button>
+          <Show when={auth.isSystemAdmin()}>
+            <button class="btn" onClick={() => startBackup('global', 'object_storage')}>
+              Global → object storage
+            </button>
+            <button class="btn" onClick={() => startBackup('global', 'filesystem')}>
+              Global → filesystem
+            </button>
+            <button class="btn" onClick={() => startBackup('sql', 'filesystem')}>
+              SQL dump → filesystem
+            </button>
+          </Show>
+        </div>
+        <table class="admin-table">
+          <thead>
+            <tr><th>#</th><th>Scope</th><th>Target</th><th>Size</th><th>Status</th><th /></tr>
+          </thead>
+          <tbody>
+            <For each={backups()?.data}>
+              {row => (
+                <tr>
+                  <td>{row.id}</td>
+                  <td>{row.scope}{row.org_id ? ` (org ${row.org_id})` : ''}</td>
+                  <td>{row.target}</td>
+                  <td>{(row.size_bytes / 1024).toFixed(1)} KB</td>
+                  <td><span class={`status-pill status-${row.status}`}>{row.status}</span>{row.error ? ` ${row.error}` : ''}</td>
+                  <td>
+                    <Show when={row.status === 'completed'}>
+                      <button class="btn btn-tiny" onClick={() => verify(row.id)}>verify</button>
+                    </Show>
+                  </td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </section>
+
+      <Show when={auth.isSystemAdmin()}>
+        <section class="admin-card">
+          <h2>Realtime WAL shipping</h2>
+          <p class="muted-note">
+            Streams every database change (Postgres WAL segments via a replication slot) encrypted
+            to object storage or the filesystem as segments complete. Configure with
+            WALSHIP_ENABLED=true, WALSHIP_TARGET, BACKUP_ENCRYPTION_KEY.
+          </p>
+          <pre class="mono small">{JSON.stringify(walship() ?? {}, null, 2)}</pre>
+        </section>
       </Show>
     </div>
   );

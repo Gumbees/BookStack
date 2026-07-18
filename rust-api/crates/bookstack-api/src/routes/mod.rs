@@ -3,6 +3,7 @@ pub mod auth;
 pub mod content;
 pub mod mcp;
 pub mod oauth;
+pub mod ops;
 pub mod org;
 pub mod sso;
 pub mod ws;
@@ -38,6 +39,13 @@ pub fn router(state: AppState) -> Router {
         .route("/orgs/{org_id}/settings", get(admin::get_org_settings).put(admin::update_org_settings))
         .route("/orgs/{org_id}/auth-providers", get(admin::list_org_providers).post(admin::create_org_provider))
         .route("/orgs/{org_id}/auth-providers/{id}", put(admin::update_org_provider).delete(admin::delete_org_provider))
+        // operational: imports, backups, WAL shipping
+        .route("/admin/import", post(ops::start_import))
+        .route("/admin/imports", get(ops::list_imports))
+        .route("/admin/import/{id}", get(ops::get_import))
+        .route("/admin/backups", get(ops::list_backups).post(ops::start_backup))
+        .route("/admin/backups/{id}/verify", post(ops::verify_backup))
+        .route("/admin/walship", get(ops::walship_status))
         // OAuth consent plumbing (authed SPA calls)
         .route("/oauth/client/{client_id}", get(oauth::client_info))
         .route("/oauth/approve", post(oauth::approve))

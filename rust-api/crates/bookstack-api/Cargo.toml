@@ -12,6 +12,7 @@ path = "src/main.rs"
 bookstack-core.workspace = true
 bookstack-collab.workspace = true
 bookstack-semantic.workspace = true
+bookstack-ops.workspace = true
 bookstack-mcp.workspace = true
 tokio.workspace = true
 axum.workspace = true

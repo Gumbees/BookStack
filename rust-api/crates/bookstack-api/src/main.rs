@@ -28,7 +28,20 @@ async fn main() -> anyhow::Result<()> {
     if semantic.is_none() {
         tracing::info!("semantic search disabled (EMBEDDINGS_API_URL not set)");
     }
-    let state = AppState::new(core, semantic);
+    let walship = match bookstack_ops::WalShipConfig::from_env(&core.config.database_url) {
+        Some(cfg) => match bookstack_ops::WalShipper::start(cfg) {
+            Ok(shipper) => {
+                tracing::info!("realtime WAL shipping enabled");
+                Some(shipper)
+            }
+            Err(err) => {
+                tracing::error!("WAL shipping misconfigured: {err}");
+                None
+            }
+        },
+        None => None,
+    };
+    let state = AppState::new(core, semantic, walship);
 
     let app = routes::router(state.clone());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

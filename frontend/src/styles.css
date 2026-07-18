@@ -916,3 +916,26 @@ mark {
   border-radius: 6px;
   font-size: 0.92rem;
 }
+
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed var(--border);
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  background: #eef1f6;
+  color: var(--text-muted);
+}
+
+.status-running { background: #fff3d6; color: #8a6100; }
+.status-completed { background: #e7f7ec; color: #1b873b; }
+.status-failed { background: #fdecea; color: var(--danger); }

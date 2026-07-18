@@ -74,6 +74,10 @@ For frontend development with hot reload, run `npm run dev` in `frontend/`
 | `EMBEDDINGS_API_URL` | unset (semantic disabled) | Base of an OpenAI-compatible embeddings API (`POST {url}/embeddings`) |
 | `EMBEDDINGS_API_KEY` | unset | Bearer key for the embeddings API |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | Embedding model name |
+| `BACKUP_ENCRYPTION_KEY` | unset (backups disabled) | Passphrase (min 12 chars) for backup/WAL encryption |
+| `BACKUP_DIR` | `var/backups` | Filesystem backup target (global/sql scopes only) |
+| `BACKUP_S3_*` | unset | S3-compatible object storage: ENDPOINT, BUCKET, REGION, ACCESS_KEY_ID, SECRET_ACCESS_KEY, PREFIX |
+| `WALSHIP_ENABLED` / `WALSHIP_TARGET` / `WALSHIP_SPOOL_DIR` / `WALSHIP_SLOT` | disabled | Realtime WAL shipping (see below) |
 | `RUST_LOG` | `info,sqlx=warn,tower_http=info` | Log filter |
 
 ## Multi-tenant organizations
@@ -253,6 +257,55 @@ claude mcp add --transport http bookstack http://localhost:8080/mcp \
 
 Write tools enforce the editor role; page-content tools coordinate with the
 collab engine (see invalidation above).
+
+## Import from an existing BookStack instance
+
+Admin → Data → **Import**: point at a live BookStack URL with an API token
+(`id` + `secret`) and a target org. The importer pulls books → chapters →
+pages → shelves (with tags and shelf-book links), fetching page content
+through BookStack's markdown export endpoint so WYSIWYG pages convert too,
+and stripping the export's duplicated H1 title.
+
+**API limits are respected**: requests are paced client-side to a
+configurable budget (default 90/min; BookStack ships 180/min per user), and
+`429 Too Many Requests` responses are honored via `Retry-After` with bounded
+retries. Progress (per-phase counters, skipped drafts, error samples)
+streams into the job record and the admin UI. Images, attachments and drafts
+are not imported.
+
+## Backups (always encrypted)
+
+Admin → Data → **Backups**. Every backup is compressed and encrypted with
+XChaCha20-Poly1305 (key derived from `BACKUP_ENCRYPTION_KEY` via argon2id;
+`BSBK1` header + salt + nonce). Three scopes:
+
+| Scope | Contents | Object storage | Filesystem |
+| --- | --- | --- | --- |
+| `org` | one org's content (org admins) | ✓ | ✗ — restricted to global |
+| `global` | whole instance incl. users/settings/providers | ✓ | ✓ |
+| `sql` | `pg_dump` logical snapshot | ✓ | ✓ |
+
+Object storage is any S3-compatible endpoint (`BACKUP_S3_ENDPOINT`,
+`BACKUP_S3_BUCKET`, `BACKUP_S3_REGION`, `BACKUP_S3_ACCESS_KEY_ID`,
+`BACKUP_S3_SECRET_ACCESS_KEY`, optional `BACKUP_S3_PREFIX`); the filesystem
+target writes under `BACKUP_DIR`. Each stored backup has a **verify** action
+that downloads, decrypts and parses it, reporting entity counts — proof the
+artifact is restorable with the current key.
+
+## Realtime SQL (WAL) shipping
+
+`WALSHIP_ENABLED=true` starts a managed `pg_receivewal` replication stream
+(slot `bookstack_walship` by default): every database change streams into a
+spool, and each completed WAL segment is immediately gzip+encrypted and
+shipped to `WALSHIP_TARGET` (`object_storage` or `filesystem`), then removed
+from the spool. Status (running flag, shipped segment count, last error) is
+at Admin → Data and `GET /api/admin/walship`.
+
+Requirements: `pg_receivewal` on PATH and the `DATABASE_URL` role granted
+`REPLICATION` (plus a replication entry in `pg_hba.conf` — Debian/Ubuntu
+defaults already allow localhost). Pair the WAL stream with periodic `sql`
+backups as restore baselines; segments are 16 MB, so a
+`pg_switch_wal()`/`archive_timeout` cadence bounds worst-case data loss.
 
 ## Testing done
 

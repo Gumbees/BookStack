@@ -1,3 +1,59 @@
+export interface OrgMembership {
+  org_id: number;
+  name: string;
+  slug: string;
+  role: 'admin' | 'editor' | 'viewer';
+}
+
+export interface AuthProvider {
+  id: number;
+  org_id: number | null;
+  name: string;
+  client_id: string;
+  authorize_url: string;
+  token_url: string;
+  userinfo_url: string;
+  scopes: string;
+  enabled: boolean;
+  auto_register: boolean;
+}
+
+export interface PublicProvider {
+  id: number;
+  name: string;
+  org_id: number | null;
+}
+
+export interface OrgMemberInfo {
+  user_id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export interface SemanticChunk {
+  content: string;
+  score: number;
+}
+
+export interface SemanticResult {
+  entity_type: 'page' | 'book' | 'chapter' | 'shelf';
+  org_id: number;
+  org_slug: string;
+  id: number;
+  name: string;
+  slug: string;
+  book_slug: string | null;
+  score: number;
+  chunks: SemanticChunk[];
+}
+
+export interface SemanticResponse {
+  mode: string;
+  results: SemanticResult[];
+  stats: Record<string, unknown>;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -74,6 +130,8 @@ export interface Revision {
 
 export interface SearchResult {
   entity_type: 'page' | 'book' | 'chapter' | 'shelf';
+  org_id: number;
+  org_slug: string;
   id: number;
   name: string;
   slug: string;

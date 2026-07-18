@@ -10,6 +10,8 @@ import BookView from './pages/BookView';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
 import SearchResults from './pages/SearchResults';
+import AdminSettings from './pages/AdminSettings';
+import OauthConsent from './pages/OauthConsent';
 import './styles.css';
 
 render(
@@ -23,6 +25,8 @@ render(
         <Route path="/book/:bookSlug/page/:pageSlug" component={() => <Layout><PageView /></Layout>} />
         <Route path="/book/:bookSlug/page/:pageSlug/edit" component={() => <Layout><PageEditor /></Layout>} />
         <Route path="/search" component={() => <Layout><SearchResults /></Layout>} />
+        <Route path="/admin" component={() => <Layout><AdminSettings /></Layout>} />
+        <Route path="/oauth/consent" component={() => <Layout><OauthConsent /></Layout>} />
         <Route path="*" component={() => <Layout><div class="empty-note">Not found.</div></Layout>} />
       </Router>
     </AuthProvider>

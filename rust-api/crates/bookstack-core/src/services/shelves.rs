@@ -14,32 +14,37 @@ pub struct ShelfDetails {
     pub tags: Vec<Tag>,
 }
 
-pub async fn list(db: &PgPool, params: &ListParams) -> Result<Paginated<Shelf>> {
+pub async fn list(db: &PgPool, org_id: i64, params: &ListParams) -> Result<Paginated<Shelf>> {
     let order = params.sort_sql(&["name", "id", "created_at", "updated_at"]);
     let data = sqlx::query_as::<_, Shelf>(&format!(
-        "SELECT * FROM shelves WHERE deleted_at IS NULL ORDER BY {order} LIMIT $1 OFFSET $2"
+        "SELECT * FROM shelves WHERE org_id = $3 AND deleted_at IS NULL ORDER BY {order} LIMIT $1 OFFSET $2"
     ))
     .bind(params.limit())
     .bind(params.offset())
+    .bind(org_id)
     .fetch_all(db)
     .await?;
     let (total,): (i64,) =
-        sqlx::query_as("SELECT count(*) FROM shelves WHERE deleted_at IS NULL")
+        sqlx::query_as("SELECT count(*) FROM shelves WHERE org_id = $1 AND deleted_at IS NULL")
+            .bind(org_id)
             .fetch_one(db)
             .await?;
     Ok(Paginated { data, total })
 }
 
-async fn fetch(db: &PgPool, id: i64) -> Result<Shelf> {
-    sqlx::query_as::<_, Shelf>("SELECT * FROM shelves WHERE id = $1 AND deleted_at IS NULL")
-        .bind(id)
-        .fetch_optional(db)
-        .await?
-        .ok_or(CoreError::NotFound)
+async fn fetch(db: &PgPool, org_id: i64, id: i64) -> Result<Shelf> {
+    sqlx::query_as::<_, Shelf>(
+        "SELECT * FROM shelves WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(org_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or(CoreError::NotFound)
 }
 
-pub async fn get(db: &PgPool, id: i64) -> Result<ShelfDetails> {
-    let shelf = fetch(db, id).await?;
+pub async fn get(db: &PgPool, org_id: i64, id: i64) -> Result<ShelfDetails> {
+    let shelf = fetch(db, org_id, id).await?;
     let books = sqlx::query_as::<_, Book>(
         r#"SELECT b.* FROM books b
            JOIN shelf_books sb ON sb.book_id = b.id
@@ -53,14 +58,16 @@ pub async fn get(db: &PgPool, id: i64) -> Result<ShelfDetails> {
     Ok(ShelfDetails { shelf, books, tags })
 }
 
-pub async fn get_by_slug(db: &PgPool, slug: &str) -> Result<ShelfDetails> {
-    let row: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM shelves WHERE slug = $1 AND deleted_at IS NULL")
-            .bind(slug)
-            .fetch_optional(db)
-            .await?;
+pub async fn get_by_slug(db: &PgPool, org_id: i64, slug: &str) -> Result<ShelfDetails> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        "SELECT id FROM shelves WHERE slug = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(slug)
+    .bind(org_id)
+    .fetch_optional(db)
+    .await?;
     match row {
-        Some((id,)) => get(db, id).await,
+        Some((id,)) => get(db, org_id, id).await,
         None => Err(CoreError::NotFound),
     }
 }
@@ -76,15 +83,16 @@ pub struct CreateShelf {
     pub tags: Vec<Tag>,
 }
 
-pub async fn create(db: &PgPool, user_id: i64, input: &CreateShelf) -> Result<ShelfDetails> {
+pub async fn create(db: &PgPool, org_id: i64, user_id: i64, input: &CreateShelf) -> Result<ShelfDetails> {
     let name = input.name.trim();
     if name.is_empty() {
         return Err(CoreError::validation("name is required"));
     }
     let slug = unique_slug(name, |candidate| async move {
         let (exists,): (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM shelves WHERE slug = $1 AND deleted_at IS NULL)",
+            "SELECT EXISTS(SELECT 1 FROM shelves WHERE org_id = $1 AND slug = $2 AND deleted_at IS NULL)",
         )
+        .bind(org_id)
         .bind(candidate)
         .fetch_one(db)
         .await?;
@@ -93,8 +101,9 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateShelf) -> Result<Sh
     .await?;
 
     let shelf = sqlx::query_as::<_, Shelf>(
-        "INSERT INTO shelves (name, slug, description, created_by, updated_by) VALUES ($1, $2, $3, $4, $4) RETURNING *",
+        "INSERT INTO shelves (org_id, name, slug, description, created_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5) RETURNING *",
     )
+    .bind(org_id)
     .bind(name)
     .bind(&slug)
     .bind(input.description.trim())
@@ -102,11 +111,11 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateShelf) -> Result<Sh
     .fetch_one(db)
     .await?;
 
-    set_books(db, shelf.id, &input.books).await?;
+    set_books(db, org_id, shelf.id, &input.books).await?;
     if !input.tags.is_empty() {
         tags::set_for(db, "shelf", shelf.id, &input.tags).await?;
     }
-    get(db, shelf.id).await
+    get(db, org_id, shelf.id).await
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -117,8 +126,8 @@ pub struct UpdateShelf {
     pub tags: Option<Vec<Tag>>,
 }
 
-pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateShelf) -> Result<ShelfDetails> {
-    let current = fetch(db, id).await?;
+pub async fn update(db: &PgPool, org_id: i64, user_id: i64, id: i64, input: &UpdateShelf) -> Result<ShelfDetails> {
+    let current = fetch(db, org_id, id).await?;
     let name = input.name.clone().unwrap_or(current.name);
     let description = input.description.clone().unwrap_or(current.description);
     sqlx::query(
@@ -131,15 +140,16 @@ pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateShelf) -> 
     .execute(db)
     .await?;
     if let Some(book_ids) = &input.books {
-        set_books(db, id, book_ids).await?;
+        set_books(db, org_id, id, book_ids).await?;
     }
     if let Some(t) = &input.tags {
         tags::set_for(db, "shelf", id, t).await?;
     }
-    get(db, id).await
+    get(db, org_id, id).await
 }
 
-pub async fn set_books(db: &PgPool, shelf_id: i64, book_ids: &[i64]) -> Result<()> {
+/// Replace a shelf's book assignments. Only books of the same org attach.
+pub async fn set_books(db: &PgPool, org_id: i64, shelf_id: i64, book_ids: &[i64]) -> Result<()> {
     let mut tx = db.begin().await?;
     sqlx::query("DELETE FROM shelf_books WHERE shelf_id = $1")
         .bind(shelf_id)
@@ -148,12 +158,13 @@ pub async fn set_books(db: &PgPool, shelf_id: i64, book_ids: &[i64]) -> Result<(
     for (i, book_id) in book_ids.iter().enumerate() {
         sqlx::query(
             r#"INSERT INTO shelf_books (shelf_id, book_id, "order")
-               SELECT $1, id, $3 FROM books WHERE id = $2 AND deleted_at IS NULL
+               SELECT $1, id, $3 FROM books WHERE id = $2 AND org_id = $4 AND deleted_at IS NULL
                ON CONFLICT DO NOTHING"#,
         )
         .bind(shelf_id)
         .bind(book_id)
         .bind(i as i32)
+        .bind(org_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -161,27 +172,10 @@ pub async fn set_books(db: &PgPool, shelf_id: i64, book_ids: &[i64]) -> Result<(
     Ok(())
 }
 
-pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
-    let shelf = fetch(db, id).await?;
-    let mut tx = db.begin().await?;
-    let res = sqlx::query(
-        "UPDATE shelves SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(id)
-    .execute(&mut *tx)
-    .await?;
-    if res.rows_affected() == 0 {
-        return Err(CoreError::NotFound);
-    }
-    super::recycle::record(&mut tx, "shelf", id, &shelf.name, Some(user_id)).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
 /// Add a book to a shelf (appended at the end); no-op if already present.
-pub async fn add_book(db: &PgPool, shelf_id: i64, book_id: i64) -> Result<()> {
-    fetch(db, shelf_id).await?;
-    super::books::fetch(db, book_id).await?;
+pub async fn add_book(db: &PgPool, org_id: i64, shelf_id: i64, book_id: i64) -> Result<()> {
+    fetch(db, org_id, shelf_id).await?;
+    super::books::fetch(db, org_id, book_id).await?;
     sqlx::query(
         r#"INSERT INTO shelf_books (shelf_id, book_id, "order")
            VALUES ($1, $2, (SELECT coalesce(max("order"), -1) + 1 FROM shelf_books WHERE shelf_id = $1))
@@ -194,11 +188,29 @@ pub async fn add_book(db: &PgPool, shelf_id: i64, book_id: i64) -> Result<()> {
     Ok(())
 }
 
-pub async fn remove_book(db: &PgPool, shelf_id: i64, book_id: i64) -> Result<()> {
+pub async fn remove_book(db: &PgPool, org_id: i64, shelf_id: i64, book_id: i64) -> Result<()> {
+    fetch(db, org_id, shelf_id).await?;
     sqlx::query("DELETE FROM shelf_books WHERE shelf_id = $1 AND book_id = $2")
         .bind(shelf_id)
         .bind(book_id)
         .execute(db)
         .await?;
+    Ok(())
+}
+
+pub async fn delete(db: &PgPool, org_id: i64, user_id: i64, id: i64) -> Result<()> {
+    let shelf = fetch(db, org_id, id).await?;
+    let mut tx = db.begin().await?;
+    let res = sqlx::query(
+        "UPDATE shelves SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(CoreError::NotFound);
+    }
+    super::recycle::record(&mut tx, org_id, "shelf", id, &shelf.name, Some(user_id)).await?;
+    tx.commit().await?;
     Ok(())
 }

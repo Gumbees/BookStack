@@ -22,15 +22,16 @@ pub struct Counts {
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub async fn info(db: &PgPool) -> Result<SystemInfo> {
+pub async fn info(db: &PgPool, org_id: i64) -> Result<SystemInfo> {
     let (shelves, books, chapters, pages, users): (i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT
-            (SELECT count(*) FROM shelves WHERE deleted_at IS NULL),
-            (SELECT count(*) FROM books WHERE deleted_at IS NULL),
-            (SELECT count(*) FROM chapters WHERE deleted_at IS NULL),
-            (SELECT count(*) FROM pages WHERE deleted_at IS NULL),
-            (SELECT count(*) FROM users)",
+            (SELECT count(*) FROM shelves WHERE org_id = $1 AND deleted_at IS NULL),
+            (SELECT count(*) FROM books WHERE org_id = $1 AND deleted_at IS NULL),
+            (SELECT count(*) FROM chapters WHERE org_id = $1 AND deleted_at IS NULL),
+            (SELECT count(*) FROM pages WHERE org_id = $1 AND deleted_at IS NULL),
+            (SELECT count(*) FROM org_members WHERE org_id = $1)",
     )
+    .bind(org_id)
     .fetch_one(db)
     .await?;
     Ok(SystemInfo {

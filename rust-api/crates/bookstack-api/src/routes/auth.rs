@@ -4,9 +4,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use bookstack_core::auth;
+use bookstack_core::services::orgs;
 
 use crate::error::ApiResult;
-use crate::extract::AuthedUser;
+use crate::extract::{AuthedUser, OrgCtx};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -26,11 +27,13 @@ pub async fn login(
         &body.password,
     )
     .await?;
-    Ok(Json(json!({ "token": token, "user": user })))
+    let memberships = orgs::memberships(&state.core.db, user.id).await?;
+    Ok(Json(json!({ "token": token, "user": user, "orgs": memberships })))
 }
 
-pub async fn me(user: AuthedUser) -> Json<Value> {
-    Json(json!({ "user": user.0 }))
+pub async fn me(State(state): State<AppState>, user: AuthedUser) -> ApiResult<Json<Value>> {
+    let memberships = orgs::memberships(&state.core.db, user.0.id).await?;
+    Ok(Json(json!({ "user": user.0, "orgs": memberships })))
 }
 
 #[derive(Deserialize)]
@@ -38,14 +41,16 @@ pub struct CreateTokenRequest {
     pub name: String,
 }
 
+/// Create an API token bound to the caller's active org (X-Org-Id).
 pub async fn create_token(
     State(state): State<AppState>,
-    user: AuthedUser,
+    ctx: OrgCtx,
     Json(body): Json<CreateTokenRequest>,
 ) -> ApiResult<Json<Value>> {
-    let created = auth::create_api_token(&state.core.db, user.0.id, &body.name).await?;
+    let created = auth::create_api_token(&state.core.db, ctx.user.id, ctx.org_id, &body.name).await?;
     Ok(Json(json!({
         "token": created,
+        "org_id": ctx.org_id,
         "note": "Store the secret now; it is not shown again. Use header: Authorization: Token <token_id>:<secret>",
     })))
 }

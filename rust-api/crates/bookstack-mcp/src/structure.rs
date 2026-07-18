@@ -6,7 +6,7 @@ use sqlx::PgPool;
 
 use bookstack_core::Core;
 
-pub async fn instructions(core: &Core) -> String {
+pub async fn instructions(core: &Core, org_id: i64) -> String {
     let mut out = String::new();
 
     out.push_str(
@@ -58,7 +58,7 @@ pub async fn instructions(core: &Core) -> String {
          - Shelves: {public_url}/shelf/{{slug}}\n\n"
     ));
 
-    match build_structure(&core.db).await {
+    match build_structure(&core.db, org_id).await {
         Some(structure) => {
             out.push_str("Current structure:\n\n");
             out.push_str(&structure);
@@ -71,25 +71,29 @@ pub async fn instructions(core: &Core) -> String {
 
 /// Render the shelf → book → chapter tree with IDs and truncated
 /// descriptions. Books on no shelf are listed under "(unshelved)".
-async fn build_structure(db: &PgPool) -> Option<String> {
+async fn build_structure(db: &PgPool, org_id: i64) -> Option<String> {
     let shelves: Vec<(i64, String, String)> =
-        sqlx::query_as("SELECT id, name, description FROM shelves WHERE deleted_at IS NULL ORDER BY name")
+        sqlx::query_as("SELECT id, name, description FROM shelves WHERE org_id = $1 AND deleted_at IS NULL ORDER BY name")
+            .bind(org_id)
             .fetch_all(db)
             .await
             .ok()?;
     let shelf_books: Vec<(i64, i64)> =
-        sqlx::query_as(r#"SELECT shelf_id, book_id FROM shelf_books ORDER BY shelf_id, "order""#)
+        sqlx::query_as(r#"SELECT sb.shelf_id, sb.book_id FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id WHERE s.org_id = $1 ORDER BY sb.shelf_id, sb."order""#)
+            .bind(org_id)
             .fetch_all(db)
             .await
             .ok()?;
     let books: Vec<(i64, String, String)> =
-        sqlx::query_as("SELECT id, name, description FROM books WHERE deleted_at IS NULL ORDER BY name")
+        sqlx::query_as("SELECT id, name, description FROM books WHERE org_id = $1 AND deleted_at IS NULL ORDER BY name")
+            .bind(org_id)
             .fetch_all(db)
             .await
             .ok()?;
     let chapters: Vec<(i64, i64, String, String)> = sqlx::query_as(
-        "SELECT id, book_id, name, description FROM chapters WHERE deleted_at IS NULL ORDER BY priority, id",
+        "SELECT id, book_id, name, description FROM chapters WHERE org_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
     )
+    .bind(org_id)
     .fetch_all(db)
     .await
     .ok()?;

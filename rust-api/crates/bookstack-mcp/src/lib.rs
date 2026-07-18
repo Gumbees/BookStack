@@ -28,9 +28,19 @@ mod tools;
 use serde_json::{json, Value};
 
 use bookstack_collab::CollabEngine;
-use bookstack_core::models::AuthUser;
+use bookstack_core::models::{AuthUser, Role};
 use bookstack_core::Core;
+use bookstack_semantic::SemanticEngine;
 use std::sync::Arc;
+
+/// Per-request acting context: the authenticated user, the org the request
+/// operates in, and the user's role inside that org.
+#[derive(Debug, Clone)]
+pub struct McpCtx {
+    pub user: AuthUser,
+    pub org_id: i64,
+    pub org_role: Role,
+}
 
 pub const SERVER_NAME: &str = "bookstack-mcp";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -39,16 +49,21 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", 
 pub struct McpServer {
     pub core: Core,
     pub collab: Arc<CollabEngine>,
+    pub semantic: Option<Arc<SemanticEngine>>,
 }
 
 impl McpServer {
-    pub fn new(core: Core, collab: Arc<CollabEngine>) -> McpServer {
-        McpServer { core, collab }
+    pub fn new(
+        core: Core,
+        collab: Arc<CollabEngine>,
+        semantic: Option<Arc<SemanticEngine>>,
+    ) -> McpServer {
+        McpServer { core, collab, semantic }
     }
 
     /// Handle one JSON-RPC message. Returns `None` for notifications
     /// (which get an HTTP 202 with no body).
-    pub async fn handle(&self, user: &AuthUser, message: Value) -> Option<Value> {
+    pub async fn handle(&self, ctx: &McpCtx, message: Value) -> Option<Value> {
         let method = message.get("method").and_then(Value::as_str).unwrap_or_default();
         let id = message.get("id").cloned();
         let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -59,13 +74,15 @@ impl McpServer {
         };
 
         let response = match method {
-            "initialize" => json_rpc_result(id, self.initialize(&params).await),
+            "initialize" => json_rpc_result(id, self.initialize(ctx, &params).await),
             "ping" => json_rpc_result(id, json!({})),
-            "tools/list" => json_rpc_result(id, json!({ "tools": tools::definitions() })),
+            "tools/list" => {
+                json_rpc_result(id, json!({ "tools": tools::definitions(self.semantic.is_some()) }))
+            }
             "tools/call" => {
                 let name = params.get("name").and_then(Value::as_str).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
-                let result = tools::call(self, user, name, &args).await;
+                let result = tools::call(self, ctx, name, &args).await;
 
                 // Every tools/call result carries `_meta.time` (same shape as
                 // upstream issue #67) so sessions can reason about
@@ -93,7 +110,7 @@ impl McpServer {
         Some(response)
     }
 
-    async fn initialize(&self, params: &Value) -> Value {
+    async fn initialize(&self, ctx: &McpCtx, params: &Value) -> Value {
         let requested = params
             .get("protocolVersion")
             .and_then(Value::as_str)
@@ -111,7 +128,7 @@ impl McpServer {
                 "title": "BookStack MCP",
                 "version": SERVER_VERSION,
             },
-            "instructions": structure::instructions(&self.core).await,
+            "instructions": structure::instructions(&self.core, ctx.org_id).await,
         })
     }
 }

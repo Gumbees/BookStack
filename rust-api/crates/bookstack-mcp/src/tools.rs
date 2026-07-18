@@ -4,13 +4,13 @@
 
 use serde_json::{json, Value};
 
-use bookstack_core::models::{AuthUser, ListParams};
+use bookstack_core::models::ListParams;
 use bookstack_core::services::{
     books, chapters, comments, directory, exports, pages, recycle, search, shelves, system, users,
 };
 use bookstack_core::CoreError;
 
-use crate::McpServer;
+use crate::{McpCtx, McpServer};
 
 type ToolResult = Result<String, String>;
 
@@ -75,8 +75,8 @@ fn map_core(err: CoreError) -> String {
     }
 }
 
-fn require_edit(user: &AuthUser) -> Result<(), String> {
-    if user.role.can_edit() {
+fn require_edit(ctx: &McpCtx) -> Result<(), String> {
+    if ctx.org_role.can_edit() {
         Ok(())
     } else {
         Err("forbidden: this operation requires the editor or admin role".to_string())
@@ -295,8 +295,8 @@ fn export_schema(id_name: &str) -> Value {
 
 // --- tool catalog ---
 
-pub fn definitions() -> Vec<Value> {
-    vec![
+pub fn definitions(semantic_enabled: bool) -> Vec<Value> {
+    let mut tools = vec![
         tool("search_content",
             "Search across all BookStack content (pages, chapters, books, shelves). Supports operators: {type:page}, [tag_name=value], {in_name:term}, {created_by:me}, exact match with quotes.",
             json!({
@@ -535,7 +535,29 @@ pub fn definitions() -> Vec<Value> {
         tool("get_system_info", "Get BookStack instance information (version, etc.).", json!({
             "type": "object", "properties": {}
         })),
-    ]
+    ];
+
+    if semantic_enabled {
+        tools.push(tool("semantic_search",
+            "Semantic search over the knowledge base. **Default to `mode: \"precision\"`** — it blends embedding similarity with keyword agreement and keeps only confident hits. Use `mode: \"standard\"` for a broader sweep (more results). Both modes return the same JSON shape (`results` + `stats`).",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "Natural-language query" },
+                    "mode": { "type": "string", "enum": ["precision", "standard"], "description": "precision (default): tight, high-confidence results. standard: broader sweep.", "default": "precision" },
+                    "count": { "type": "integer", "description": "Max results", "default": 10 }
+                },
+                "required": ["query"]
+            })));
+        tools.push(tool("reembed",
+            "Queue every entity in the org for re-embedding (use after bulk changes). Check progress with embedding_status.",
+            json!({ "type": "object", "properties": {} })));
+        tools.push(tool("embedding_status",
+            "Report the semantic index state: embedded chunk/entity counts, pending jobs, and the embedding model.",
+            json!({ "type": "object", "properties": {} })));
+    }
+
+    tools
 }
 
 // --- static roles (this rewrite uses coarse roles rather than BookStack's
@@ -564,7 +586,7 @@ fn role_json(id: i64) -> Option<Value> {
 
 // --- dispatch ---
 
-pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value) -> ToolResult {
+pub async fn call(server: &McpServer, ctx: &McpCtx, name: &str, args: &Value) -> ToolResult {
     let db = &server.core.db;
     let base_url = server.core.config.public_url.clone();
 
@@ -574,7 +596,7 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             let count = arg_i64(args, "count", 20).clamp(1, 100);
             let page = arg_i64(args, "page", 1).max(1);
             let offset = (page - 1) * count;
-            let results = search::search(db, &query, &[], count, offset, Some(user.id))
+            let results = search::search(db, &[ctx.org_id], &query, &[], count, offset, Some(ctx.user.id))
                 .await
                 .map_err(map_core)?;
             format_json(&to_value(results))
@@ -586,7 +608,7 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             if !["meta", "summary", "full"].contains(&include.as_str()) {
                 return Err("include must be one of: meta, summary, full".to_string());
             }
-            let tree = directory::tree(db, scope, depth).await.map_err(map_core)?;
+            let tree = directory::tree(db, ctx.org_id, scope, depth).await.map_err(map_core)?;
             format_json(&json!({
                 "scope": scope_payload(scope),
                 "depth": depth,
@@ -597,24 +619,24 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
 
         // --- shelves ---
         "list_shelves" => format_json(&to_value(
-            shelves::list(db, &list_params(args)).await.map_err(map_core)?,
+            shelves::list(db, ctx.org_id, &list_params(args)).await.map_err(map_core)?,
         )),
         "get_shelf" => format_json(&to_value(
-            shelves::get(db, arg_i64_required(args, "shelf_id")?).await.map_err(map_core)?,
+            shelves::get(db, ctx.org_id, arg_i64_required(args, "shelf_id")?).await.map_err(map_core)?,
         )),
         "create_shelf" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let input = shelves::CreateShelf {
                 name: arg_str(args, "name")?,
                 description: require_description(args, "shelf")?,
                 books: arg_i64_array(args, "books"),
                 tags: vec![],
             };
-            let details = shelves::create(db, user.id, &input).await.map_err(map_core)?;
+            let details = shelves::create(db, ctx.org_id, ctx.user.id, &input).await.map_err(map_core)?;
             Ok(format_shelf_success("Shelf created successfully.", &details, &base_url))
         }
         "update_shelf" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "shelf_id")?;
             let books_arg = args.get("books").and_then(|v| v.as_array()).map(|a| {
                 a.iter().filter_map(|v| v.as_i64()).collect::<Vec<_>>()
@@ -625,73 +647,73 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 books: books_arg,
                 tags: None,
             };
-            let details = shelves::update(db, user.id, id, &input).await.map_err(map_core)?;
+            let details = shelves::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             Ok(format_shelf_success("Shelf updated successfully.", &details, &base_url))
         }
         "delete_shelf" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "shelf_id")?;
-            shelves::delete(db, user.id, id).await.map_err(map_core)?;
+            shelves::delete(db, ctx.org_id, ctx.user.id, id).await.map_err(map_core)?;
             Ok(format!("Shelf {id} deleted (moved to recycle bin)."))
         }
 
         // --- books ---
         "list_books" => format_json(&to_value(
-            books::list(db, &list_params(args)).await.map_err(map_core)?,
+            books::list(db, ctx.org_id, &list_params(args)).await.map_err(map_core)?,
         )),
         "get_book" => format_json(&to_value(
-            books::get(db, arg_i64_required(args, "book_id")?).await.map_err(map_core)?,
+            books::get(db, ctx.org_id, arg_i64_required(args, "book_id")?).await.map_err(map_core)?,
         )),
         "create_book" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let input = books::CreateBook {
                 name: arg_str(args, "name")?,
                 description: require_description(args, "book")?,
                 tags: vec![],
             };
-            let details = books::create(db, user.id, &input).await.map_err(map_core)?;
+            let details = books::create(db, ctx.org_id, ctx.user.id, &input).await.map_err(map_core)?;
             Ok(format_book_success("Book created successfully.", &details, &base_url))
         }
         "update_book" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "book_id")?;
             let input = books::UpdateBook {
                 name: arg_str_opt(args, "name"),
                 description: arg_str_opt(args, "description"),
                 tags: None,
             };
-            let details = books::update(db, user.id, id, &input).await.map_err(map_core)?;
+            let details = books::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             Ok(format_book_success("Book updated successfully.", &details, &base_url))
         }
         "delete_book" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "book_id")?;
-            books::delete(db, user.id, id).await.map_err(map_core)?;
+            books::delete(db, ctx.org_id, ctx.user.id, id).await.map_err(map_core)?;
             Ok(format!("Book {id} deleted (moved to recycle bin)."))
         }
 
         // --- chapters ---
         "list_chapters" => format_json(&to_value(
-            chapters::list(db, &list_params(args), arg_i64_opt(args, "book_id"))
+            chapters::list(db, ctx.org_id, &list_params(args), arg_i64_opt(args, "book_id"))
                 .await
                 .map_err(map_core)?,
         )),
         "get_chapter" => format_json(&to_value(
-            chapters::get(db, arg_i64_required(args, "chapter_id")?).await.map_err(map_core)?,
+            chapters::get(db, ctx.org_id, arg_i64_required(args, "chapter_id")?).await.map_err(map_core)?,
         )),
         "create_chapter" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let input = chapters::CreateChapter {
                 book_id: arg_i64_required(args, "book_id")?,
                 name: arg_str(args, "name")?,
                 description: require_description(args, "chapter")?,
                 tags: vec![],
             };
-            let details = chapters::create(db, user.id, &input).await.map_err(map_core)?;
+            let details = chapters::create(db, ctx.org_id, ctx.user.id, &input).await.map_err(map_core)?;
             Ok(format_chapter_success("Chapter created successfully.", &details, &base_url))
         }
         "update_chapter" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "chapter_id")?;
             let input = chapters::UpdateChapter {
                 name: arg_str_opt(args, "name"),
@@ -699,18 +721,18 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 priority: None,
                 tags: None,
             };
-            let mut details = chapters::update(db, user.id, id, &input).await.map_err(map_core)?;
+            let mut details = chapters::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             if let Some(target_book) = arg_i64_opt(args, "book_id") {
-                details = chapters::move_to_book(db, user.id, id, target_book)
+                details = chapters::move_to_book(db, ctx.org_id, ctx.user.id, id, target_book)
                     .await
                     .map_err(map_core)?;
             }
             Ok(format_chapter_success("Chapter updated successfully.", &details, &base_url))
         }
         "delete_chapter" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "chapter_id")?;
-            chapters::delete(db, user.id, id).await.map_err(map_core)?;
+            chapters::delete(db, ctx.org_id, ctx.user.id, id).await.map_err(map_core)?;
             Ok(format!("Chapter {id} deleted (moved to recycle bin). Its pages became book-level pages."))
         }
 
@@ -718,6 +740,7 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
         "list_pages" => format_json(&to_value(
             pages::list(
                 db,
+                ctx.org_id,
                 &list_params(args),
                 arg_i64_opt(args, "book_id"),
                 arg_i64_opt(args, "chapter_id"),
@@ -726,7 +749,7 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             .map_err(map_core)?,
         )),
         "get_page" => {
-            let details = pages::get(db, arg_i64_required(args, "page_id")?)
+            let details = pages::get(db, ctx.org_id, arg_i64_required(args, "page_id")?)
                 .await
                 .map_err(map_core)?;
             let url = format!("{base_url}/book/{}/page/{}", details.book_slug, details.page.slug);
@@ -738,14 +761,14 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             format_json(&value)
         }
         "create_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             if args.get("html").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty()) {
                 return Err("this instance is markdown-native — pass content via the 'markdown' parameter".to_string());
             }
             let name = arg_str(args, "name")?;
             let chapter_id = arg_i64_opt(args, "chapter_id");
             let book_id = match (arg_i64_opt(args, "book_id"), chapter_id) {
-                (_, Some(cid)) => chapters::fetch(db, cid).await.map_err(map_core)?.book_id,
+                (_, Some(cid)) => chapters::fetch(db, ctx.org_id, cid).await.map_err(map_core)?.book_id,
                 (Some(bid), None) => bid,
                 (None, None) => return Err("Either book_id or chapter_id is required".to_string()),
             };
@@ -758,11 +781,11 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 draft: false,
                 tags: vec![],
             };
-            let details = pages::create(db, user.id, &input).await.map_err(map_core)?;
+            let details = pages::create(db, ctx.org_id, ctx.user.id, &input).await.map_err(map_core)?;
             Ok(format_page_success("Page created successfully.", &details, &base_url))
         }
         "update_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             if args.get("html").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty()) {
                 return Err("this instance is markdown-native — pass content via the 'markdown' parameter".to_string());
             }
@@ -778,7 +801,7 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             let mut details = if name_arg.is_some() || markdown_arg.is_some() {
                 let page_name = match &name_arg {
                     Some(n) => n.clone(),
-                    None => pages::fetch(db, id).await.map_err(map_core)?.name,
+                    None => pages::fetch(db, ctx.org_id, id).await.map_err(map_core)?.name,
                 };
                 let input = pages::UpdatePage {
                     name: name_arg,
@@ -787,35 +810,35 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                     ..Default::default()
                 };
                 let (details, content_changed) =
-                    pages::update(db, user.id, id, &input).await.map_err(map_core)?;
+                    pages::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
                 if content_changed {
                     server.collab.invalidate(id).await;
                 }
                 details
             } else {
-                pages::get(db, id).await.map_err(map_core)?
+                pages::get(db, ctx.org_id, id).await.map_err(map_core)?
             };
 
             if move_chapter.is_some() || move_book.is_some() {
                 let (target_book, target_chapter) = match (move_chapter, move_book) {
-                    (Some(cid), _) => (chapters::fetch(db, cid).await.map_err(map_core)?.book_id, Some(cid)),
+                    (Some(cid), _) => (chapters::fetch(db, ctx.org_id, cid).await.map_err(map_core)?.book_id, Some(cid)),
                     (None, Some(bid)) => (bid, None),
                     (None, None) => unreachable!(),
                 };
-                details = pages::move_page(db, user.id, id, target_book, target_chapter)
+                details = pages::move_page(db, ctx.org_id, ctx.user.id, id, target_book, target_chapter)
                     .await
                     .map_err(map_core)?;
             }
             Ok(format_page_success("Page updated successfully.", &details, &base_url))
         }
         "edit_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
             let old_text = arg_str(args, "old_text")?;
             let new_text = arg_str(args, "new_text")?;
             let replace_all = arg_bool(args, "replace_all", false);
 
-            let page = pages::fetch(db, id).await.map_err(map_core)?;
+            let page = pages::fetch(db, ctx.org_id, id).await.map_err(map_core)?;
             let count = page.markdown.matches(&old_text).count();
             if count == 0 {
                 return Err(format!(
@@ -838,17 +861,17 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 ..Default::default()
             };
             let (details, content_changed) =
-                pages::update(db, user.id, id, &input).await.map_err(map_core)?;
+                pages::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             if content_changed {
                 server.collab.invalidate(id).await;
             }
             Ok(format_page_success("Page updated successfully.", &details, &base_url))
         }
         "append_to_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
             let content = arg_str(args, "markdown")?;
-            let page = pages::fetch(db, id).await.map_err(map_core)?;
+            let page = pages::fetch(db, ctx.org_id, id).await.map_err(map_core)?;
             let updated = format!("{}\n\n{}", page.markdown.trim_end(), content);
             let input = pages::UpdatePage {
                 markdown: Some(updated),
@@ -856,18 +879,18 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 ..Default::default()
             };
             let (details, content_changed) =
-                pages::update(db, user.id, id, &input).await.map_err(map_core)?;
+                pages::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             if content_changed {
                 server.collab.invalidate(id).await;
             }
             Ok(format_page_success("Content appended successfully.", &details, &base_url))
         }
         "replace_section" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
             let heading = arg_str(args, "heading")?;
             let content = arg_str(args, "markdown")?;
-            let page = pages::fetch(db, id).await.map_err(map_core)?;
+            let page = pages::fetch(db, ctx.org_id, id).await.map_err(map_core)?;
             let updated = replace_section_markdown(&page.markdown, &heading, &content, id)?;
             let input = pages::UpdatePage {
                 markdown: Some(updated),
@@ -875,18 +898,18 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 ..Default::default()
             };
             let (details, content_changed) =
-                pages::update(db, user.id, id, &input).await.map_err(map_core)?;
+                pages::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             if content_changed {
                 server.collab.invalidate(id).await;
             }
             Ok(format_page_success("Section replaced successfully.", &details, &base_url))
         }
         "insert_after" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
             let after = arg_str(args, "after")?;
             let content = arg_str(args, "markdown")?;
-            let page = pages::fetch(db, id).await.map_err(map_core)?;
+            let page = pages::fetch(db, ctx.org_id, id).await.map_err(map_core)?;
 
             let lines: Vec<&str> = page.markdown.lines().collect();
             let pos = lines
@@ -909,57 +932,57 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 ..Default::default()
             };
             let (details, content_changed) =
-                pages::update(db, user.id, id, &input).await.map_err(map_core)?;
+                pages::update(db, ctx.org_id, ctx.user.id, id, &input).await.map_err(map_core)?;
             if content_changed {
                 server.collab.invalidate(id).await;
             }
             Ok(format_page_success("Content inserted successfully.", &details, &base_url))
         }
         "delete_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
-            pages::delete(db, user.id, id).await.map_err(map_core)?;
+            pages::delete(db, ctx.org_id, ctx.user.id, id).await.map_err(map_core)?;
             server.collab.invalidate(id).await;
             Ok(format!("Page {id} deleted (moved to recycle bin)."))
         }
         "list_page_revisions" => format_json(&to_value(
-            pages::revisions(db, arg_i64_required(args, "page_id")?, &list_params(args))
+            pages::revisions(db, ctx.org_id, arg_i64_required(args, "page_id")?, &list_params(args))
                 .await
                 .map_err(map_core)?,
         )),
 
         // --- moves ---
         "move_page" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "page_id")?;
             let chapter_id = arg_i64_opt(args, "chapter_id");
             let book_id = arg_i64_opt(args, "book_id");
             let (target_book, target_chapter) = match (chapter_id, book_id) {
                 (Some(_), Some(_)) => return Err("Provide either chapter_id or book_id, not both".to_string()),
-                (Some(cid), None) => (chapters::fetch(db, cid).await.map_err(map_core)?.book_id, Some(cid)),
+                (Some(cid), None) => (chapters::fetch(db, ctx.org_id, cid).await.map_err(map_core)?.book_id, Some(cid)),
                 (None, Some(bid)) => (bid, None),
                 (None, None) => return Err("Either chapter_id or book_id is required".to_string()),
             };
-            let details = pages::move_page(db, user.id, id, target_book, target_chapter)
+            let details = pages::move_page(db, ctx.org_id, ctx.user.id, id, target_book, target_chapter)
                 .await
                 .map_err(map_core)?;
             server.collab.invalidate(id).await;
             Ok(format_page_success("Page moved successfully.", &details, &base_url))
         }
         "move_chapter" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "chapter_id")?;
             let target = arg_i64_required(args, "target_book_id")?;
-            let details = chapters::move_to_book(db, user.id, id, target).await.map_err(map_core)?;
+            let details = chapters::move_to_book(db, ctx.org_id, ctx.user.id, id, target).await.map_err(map_core)?;
             Ok(format_chapter_success("Chapter moved successfully.", &details, &base_url))
         }
         "move_book_to_shelf" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let book_id = arg_i64_required(args, "book_id")?;
             let target = arg_i64_required(args, "target_shelf_id")?;
-            shelves::add_book(db, target, book_id).await.map_err(map_core)?;
+            shelves::add_book(db, ctx.org_id, target, book_id).await.map_err(map_core)?;
             let removed = if let Some(source) = arg_i64_opt(args, "remove_from_shelf_id") {
-                shelves::remove_book(db, source, book_id).await.map_err(map_core)?;
+                shelves::remove_book(db, ctx.org_id, source, book_id).await.map_err(map_core)?;
                 format!(" and removed from shelf {source}")
             } else {
                 String::new()
@@ -971,37 +994,38 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
         "export_page" => {
             let format = exports::ExportFormat::parse(&arg_str_default(args, "format", "markdown"))
                 .map_err(map_core)?;
-            exports::export_page(db, arg_i64_required(args, "page_id")?, format)
+            exports::export_page(db, ctx.org_id, arg_i64_required(args, "page_id")?, format)
                 .await
                 .map_err(map_core)
         }
         "export_chapter" => {
             let format = exports::ExportFormat::parse(&arg_str_default(args, "format", "markdown"))
                 .map_err(map_core)?;
-            exports::export_chapter(db, arg_i64_required(args, "chapter_id")?, format)
+            exports::export_chapter(db, ctx.org_id, arg_i64_required(args, "chapter_id")?, format)
                 .await
                 .map_err(map_core)
         }
         "export_book" => {
             let format = exports::ExportFormat::parse(&arg_str_default(args, "format", "markdown"))
                 .map_err(map_core)?;
-            exports::export_book(db, arg_i64_required(args, "book_id")?, format)
+            exports::export_book(db, ctx.org_id, arg_i64_required(args, "book_id")?, format)
                 .await
                 .map_err(map_core)
         }
 
         // --- comments ---
         "list_comments" => format_json(&to_value(
-            comments::list(db, arg_i64_opt(args, "page_id")).await.map_err(map_core)?,
+            comments::list(db, ctx.org_id, arg_i64_opt(args, "page_id")).await.map_err(map_core)?,
         )),
         "get_comment" => format_json(&to_value(
-            comments::get(db, arg_i64_required(args, "comment_id")?).await.map_err(map_core)?,
+            comments::get(db, ctx.org_id, arg_i64_required(args, "comment_id")?).await.map_err(map_core)?,
         )),
         "create_comment" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let comment = comments::create(
                 db,
-                user.id,
+                ctx.org_id,
+                ctx.user.id,
                 arg_i64_required(args, "page_id")?,
                 &arg_str(args, "markdown")?,
                 arg_i64_opt(args, "parent_id"),
@@ -1011,10 +1035,11 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             format_json(&to_value(comment))
         }
         "update_comment" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let comment = comments::update(
                 db,
-                user.id,
+                ctx.org_id,
+                ctx.user.id,
                 arg_i64_required(args, "comment_id")?,
                 &arg_str(args, "markdown")?,
             )
@@ -1023,19 +1048,19 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             format_json(&to_value(comment))
         }
         "delete_comment" => {
-            require_edit(user)?;
+            require_edit(ctx)?;
             let id = arg_i64_required(args, "comment_id")?;
-            comments::delete(db, id).await.map_err(map_core)?;
+            comments::delete(db, ctx.org_id, id).await.map_err(map_core)?;
             Ok(format!("Comment {id} deleted."))
         }
 
         // --- recycle bin ---
         "list_recycle_bin" => format_json(&to_value(
-            recycle::list(db, &list_params(args)).await.map_err(map_core)?,
+            recycle::list(db, ctx.org_id, &list_params(args)).await.map_err(map_core)?,
         )),
         "restore_recycle_bin_item" => {
-            require_edit(user)?;
-            let deletion = recycle::restore(db, arg_i64_required(args, "deletion_id")?)
+            require_edit(ctx)?;
+            let deletion = recycle::restore(db, ctx.org_id, arg_i64_required(args, "deletion_id")?)
                 .await
                 .map_err(map_core)?;
             Ok(format!(
@@ -1044,8 +1069,8 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
             ))
         }
         "destroy_recycle_bin_item" => {
-            require_edit(user)?;
-            let deletion = recycle::destroy(db, arg_i64_required(args, "deletion_id")?)
+            require_edit(ctx)?;
+            let deletion = recycle::destroy(db, ctx.org_id, arg_i64_required(args, "deletion_id")?)
                 .await
                 .map_err(map_core)?;
             Ok(format!(
@@ -1072,7 +1097,31 @@ pub async fn call(server: &McpServer, user: &AuthUser, name: &str, args: &Value)
                 None => Err("not found".to_string()),
             }
         }
-        "get_system_info" => format_json(&to_value(system::info(db).await.map_err(map_core)?)),
+        "get_system_info" => format_json(&to_value(system::info(db, ctx.org_id).await.map_err(map_core)?)),
+
+        // --- semantic (registered only when an embedding provider is configured) ---
+        "semantic_search" => {
+            let engine = server.semantic.as_ref().ok_or("semantic search is not configured on this instance")?;
+            let query = arg_str(args, "query")?;
+            let mode = bookstack_semantic::Mode::parse(&arg_str_default(args, "mode", "precision"));
+            let count = arg_i64(args, "count", 10).clamp(1, 50) as usize;
+            let response = engine
+                .search(&[ctx.org_id], &query, mode, count)
+                .await
+                .map_err(|e| e.to_string())?;
+            format_json(&to_value(response))
+        }
+        "reembed" => {
+            require_edit(ctx)?;
+            let engine = server.semantic.as_ref().ok_or("semantic search is not configured on this instance")?;
+            let queued = engine.reembed_org(ctx.org_id).await.map_err(|e| e.to_string())?;
+            Ok(format!("Queued {queued} entities for re-embedding. Check progress with embedding_status."))
+        }
+        "embedding_status" => {
+            let engine = server.semantic.as_ref().ok_or("semantic search is not configured on this instance")?;
+            let status = engine.status(ctx.org_id).await.map_err(|e| e.to_string())?;
+            format_json(&to_value(status))
+        }
 
         _ => Err(format!("unknown tool: {name}")),
     }
@@ -1113,8 +1162,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tools_list_count_is_46() {
-        assert_eq!(definitions().len(), 46);
+    fn tools_list_count_locked() {
+        assert_eq!(definitions(false).len(), 46);
+        assert_eq!(definitions(true).len(), 49);
     }
 
     #[test]

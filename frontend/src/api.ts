@@ -1,7 +1,9 @@
-import type { User } from './types';
+import type { OrgMembership, User } from './types';
 
 const TOKEN_KEY = 'bookstack_token';
 const USER_KEY = 'bookstack_user';
+const ORGS_KEY = 'bookstack_orgs';
+const ACTIVE_ORG_KEY = 'bookstack_active_org';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -17,14 +19,41 @@ export function getStoredUser(): User | null {
   }
 }
 
-export function storeSession(token: string, user: User) {
+export function getStoredOrgs(): OrgMembership[] {
+  const raw = localStorage.getItem(ORGS_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as OrgMembership[];
+  } catch {
+    return [];
+  }
+}
+
+export function getActiveOrgId(): number | null {
+  const raw = localStorage.getItem(ACTIVE_ORG_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function setActiveOrgId(orgId: number) {
+  localStorage.setItem(ACTIVE_ORG_KEY, String(orgId));
+}
+
+export function storeSession(token: string, user: User, orgs: OrgMembership[]) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(ORGS_KEY, JSON.stringify(orgs));
+  const active = getActiveOrgId();
+  if (!active || !orgs.some(o => o.org_id === active)) {
+    if (orgs.length > 0) setActiveOrgId(orgs[0].org_id);
+  }
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(ORGS_KEY);
+  localStorage.removeItem(ACTIVE_ORG_KEY);
 }
 
 export class ApiError extends Error {
@@ -39,6 +68,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const activeOrg = getActiveOrgId();
+  if (activeOrg) headers['X-Org-Id'] = String(activeOrg);
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   const res = await fetch(`/api${path}`, {

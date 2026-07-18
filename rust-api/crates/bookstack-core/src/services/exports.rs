@@ -36,13 +36,13 @@ fn render_one(name: &str, markdown_body: &str, html_body: &str, format: ExportFo
     }
 }
 
-pub async fn export_page(db: &PgPool, page_id: i64, format: ExportFormat) -> Result<String> {
-    let page = pages::fetch(db, page_id).await?;
+pub async fn export_page(db: &PgPool, org_id: i64, page_id: i64, format: ExportFormat) -> Result<String> {
+    let page = pages::fetch(db, org_id, page_id).await?;
     Ok(render_one(&page.name, &page.markdown, &page.html, format))
 }
 
-pub async fn export_chapter(db: &PgPool, chapter_id: i64, format: ExportFormat) -> Result<String> {
-    let chapter = chapters::fetch(db, chapter_id).await?;
+pub async fn export_chapter(db: &PgPool, org_id: i64, chapter_id: i64, format: ExportFormat) -> Result<String> {
+    let chapter = chapters::fetch(db, org_id, chapter_id).await?;
     let chapter_pages = sqlx::query_as::<_, crate::models::Page>(&format!(
         "SELECT {PAGE_COLS} FROM pages WHERE chapter_id = $1 AND deleted_at IS NULL ORDER BY priority, id"
     ))
@@ -67,8 +67,8 @@ pub async fn export_chapter(db: &PgPool, chapter_id: i64, format: ExportFormat) 
     Ok(out)
 }
 
-pub async fn export_book(db: &PgPool, book_id: i64, format: ExportFormat) -> Result<String> {
-    let details = books::get(db, book_id).await?;
+pub async fn export_book(db: &PgPool, org_id: i64, book_id: i64, format: ExportFormat) -> Result<String> {
+    let details = books::get(db, org_id, book_id).await?;
     let mut out = match format {
         ExportFormat::Markdown => format!("# {}\n\n{}\n", details.book.name, details.book.description),
         ExportFormat::Plaintext => format!("{}\n\n{}\n", details.book.name, details.book.description),
@@ -82,11 +82,11 @@ pub async fn export_book(db: &PgPool, book_id: i64, format: ExportFormat) -> Res
         match item {
             crate::models::ContentItem::Chapter { chapter, .. } => {
                 out.push('\n');
-                out.push_str(&export_chapter(db, chapter.id, format).await?);
+                out.push_str(&export_chapter(db, org_id, chapter.id, format).await?);
             }
             crate::models::ContentItem::Page { page } => {
                 out.push('\n');
-                out.push_str(&export_page(db, page.id, format).await?);
+                out.push_str(&export_page(db, org_id, page.id, format).await?);
                 out.push('\n');
             }
         }

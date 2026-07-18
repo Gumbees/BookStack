@@ -8,7 +8,7 @@ use futures_util::{SinkExt, StreamExt};
 
 use bookstack_collab::{CollabError, CLOSE_CONTENT_REPLACED};
 use bookstack_core::models::AuthUser;
-use bookstack_core::services::pages;
+use bookstack_core::services::{orgs, pages};
 use bookstack_core::CoreError;
 
 use crate::error::{ApiError, ApiResult};
@@ -16,7 +16,8 @@ use crate::extract::resolve_bare_token;
 use crate::state::AppState;
 
 /// Collaborative editing WebSocket. Speaks the standard `y-websocket` binary
-/// protocol; authenticate with `?token=<jwt-or-api-token>`.
+/// protocol; authenticate with `?token=<jwt-or-api-token>`. The caller must
+/// hold the editor role inside the page's org.
 pub async fn page_ws(
     State(state): State<AppState>,
     Path(page_id): Path<i64>,
@@ -24,12 +25,20 @@ pub async fn page_ws(
     ws: WebSocketUpgrade,
 ) -> ApiResult<Response> {
     let token = query.get("token").ok_or(ApiError(CoreError::Unauthorized))?;
-    let user = resolve_bare_token(&state.core, token).await?;
-    if !user.role.can_edit() {
+    let resolved = resolve_bare_token(&state.core, token).await?;
+    // The page's own org decides access, regardless of the client's active org.
+    let source = pages::collab_source(&state.core.db, page_id).await?;
+    let role = orgs::role_in(
+        &state.core.db,
+        resolved.user.id,
+        source.org_id,
+        resolved.user.role.is_admin(),
+    )
+    .await?;
+    if !role.can_edit() {
         return Err(ApiError(CoreError::Forbidden));
     }
-    // Ensure the page exists before upgrading.
-    pages::fetch(&state.core.db, page_id).await?;
+    let user = resolved.user;
 
     Ok(ws.on_upgrade(move |socket| handle_socket(state, socket, page_id, user)))
 }

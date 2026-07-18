@@ -2,9 +2,11 @@
 
 A ground-up rewrite of the BookStack backend as a Rust workspace, paired with a
 Solid.js frontend (in [`../frontend`](../frontend)), backed by **PostgreSQL**,
-with **realtime collaborative editing** (Yjs CRDTs) and a **built-in
-`bookstack-mcp` server** so AI agents can read and write the knowledge base
-over the Model Context Protocol.
+with **realtime collaborative editing** (Yjs CRDTs), **multi-tenant
+organizations**, **OAuth SSO** with global→org inheritance, a **built-in OAuth
+authorization server** for MCP clients, **semantic + precision search**, and a
+**built-in `bookstack-mcp` server** so AI agents can read and write the
+knowledge base over the Model Context Protocol.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -27,10 +29,11 @@ over the Model Context Protocol.
 
 | Crate | Purpose |
 | --- | --- |
-| `bookstack-core` | Domain models, PostgreSQL services (shelves/books/chapters/pages/revisions/tags/users), argon2 + JWT + API-token auth, markdown→sanitized-HTML pipeline, Postgres full-text search |
+| `bookstack-core` | Domain models, org-scoped PostgreSQL services (orgs/shelves/books/chapters/pages/revisions/tags/comments/recycle-bin/users), settings with global→org inheritance, auth providers, OAuth AS storage (PKCE codes, rotating refresh tokens), argon2 + JWT + API-token auth, markdown pipeline, Postgres full-text search |
 | `bookstack-collab` | Realtime engine: one Yjs (yrs) document room per actively-edited page, speaking the standard `y-websocket` binary sync + awareness protocol; debounced flatten back to Postgres and revision snapshots |
-| `bookstack-mcp` | Built-in MCP server (JSON-RPC 2.0, tools capability) exposing 21 BookStack tools directly over the core services |
-| `bookstack-api` | Axum binary wiring it all together: REST, WebSockets, `/mcp`, SPA static serving, graceful shutdown with collab flush |
+| `bookstack-semantic` | Semantic search: heading-aware chunking, any OpenAI-compatible embeddings API, per-org in-memory vector cache backed by Postgres, background indexer driven by `pg_notify` triggers (every mutation path auto-indexes), standard + precision blend modes |
+| `bookstack-mcp` | Built-in MCP server (JSON-RPC 2.0, tools capability) exposing the bees-roadhouse/bookstack-mcp surface (46 tools, +3 semantic when enabled) directly over the core services |
+| `bookstack-api` | Axum binary wiring it all together: REST, WebSockets, `/mcp`, OAuth AS + SSO endpoints, SPA static serving, graceful shutdown with collab flush |
 
 ## Quick start
 
@@ -66,7 +69,85 @@ For frontend development with hot reload, run `npm run dev` in `frontend/`
 | `BIND_ADDR` | `0.0.0.0:8080` | Listen address |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@admin.com` / `password` | Seeded when the users table is empty |
 | `STATIC_DIR` | `frontend/dist` | Built SPA to serve at `/` |
+| `PUBLIC_URL` | `http://localhost:8080` | Public base URL (OAuth issuer, SSO callbacks, MCP link building) |
+| `TIMEZONE` | `UTC` | IANA zone for MCP `_meta.time` |
+| `EMBEDDINGS_API_URL` | unset (semantic disabled) | Base of an OpenAI-compatible embeddings API (`POST {url}/embeddings`) |
+| `EMBEDDINGS_API_KEY` | unset | Bearer key for the embeddings API |
+| `EMBEDDINGS_MODEL` | `text-embedding-3-small` | Embedding model name |
 | `RUST_LOG` | `info,sqlx=warn,tower_http=info` | Log filter |
+
+## Multi-tenant organizations
+
+Users belong to any number of **orgs**, each with a per-org role (`admin` /
+`editor` / `viewer`); every content entity lives in exactly one org, and slug
+uniqueness, search, the directory tree, the recycle bin, and MCP structure
+instructions are all org-scoped. Existing data migrates into a seeded
+`Default` org.
+
+- The SPA picks the active org via the **header switcher** (top right) and
+  sends it as `X-Org-Id`; switching orgs reloads the workspace.
+- API tokens and OAuth access tokens are **org-bound**, so headless clients
+  (MCP included) act in one org without extra headers.
+- The top-bar search has an **"all orgs" toggle** — global keyword or
+  semantic search across every org you belong to, with per-result org badges
+  and automatic org switching on click.
+- Org management: `POST /api/orgs` (any user; creator becomes admin),
+  member add/remove with roles, instance admins act as admin everywhere.
+
+## Sign-in providers (OAuth/OIDC SSO)
+
+`Sign in with …` buttons come from **auth providers** stored at two scopes:
+
+- **Global** (system admins, Admin → Global): inherited by every org.
+- **Per-org** (org admins, Admin → org tab): allowed only when the global
+  **"Allow organizations to add and edit their own auth servers"** checkbox
+  is on (system admins can always manage any org's providers). Each org can
+  also opt out of inheriting the global set (`inherit_global_auth`), and
+  settings resolve org-override-else-global.
+
+The flow is standard authorization-code: `/api/auth/oidc/{id}/start` →
+provider → `/api/auth/oidc/callback` (code exchange + userinfo) → SPA lands
+with a session token. Unknown users are auto-registered (per provider
+setting); org-scoped providers auto-enroll the user into that org.
+
+## Built-in OAuth authorization server (MCP login)
+
+BookStack itself is a spec-compliant OAuth 2.1 authorization server, so MCP
+clients (Claude, etc.) can connect to `/mcp` with **no pre-shared secrets**:
+
+1. Client gets a 401 from `/mcp` with `WWW-Authenticate: Bearer
+   resource_metadata=…` (RFC 9728) and discovers the AS via RFC 8414
+   metadata.
+2. Dynamic client registration (`POST /oauth/register`).
+3. `GET /oauth/authorize` validates and hands off to the SPA consent page —
+   the user signs in with **any configured method** (password or any SSO
+   provider), picks the org the connection may act in, and approves.
+4. `POST /oauth/token` — authorization_code with mandatory PKCE (S256),
+   then rotating `refresh_token` grants (reuse of a rotated token is
+   rejected).
+
+Access tokens are org-bound BookStack JWTs (1h) accepted by `/mcp` and the
+REST API alike.
+
+## Semantic + precision search
+
+With an embeddings provider configured, the top bar (and MCP) gain semantic
+modes alongside keyword FTS:
+
+- **standard** — broad semantic sweep blended with keyword signals (0.8/0.2).
+- **precision** — tighter blend with an agreement boost when embedding
+  similarity and keyword search concur, keeping only confident results
+  (approximation of upstream bookstack-mcp's precision cascade; no
+  cross-encoder rerank).
+
+Indexing is automatic: Postgres triggers `pg_notify` on every
+shelf/book/chapter/page change (any path — REST, MCP, collab persistence),
+and the debounced background worker chunks, embeds, and upserts. Vectors are
+cached in memory per org for ~ms-latency search (pgvector is the scale-up
+path). Run `reembed` once per org to backfill existing content;
+`embedding_status` reports progress. MCP registers `semantic_search`,
+`reembed`, and `embedding_status` only when the provider is configured —
+46 tools without, 49 with.
 
 ## Authentication
 

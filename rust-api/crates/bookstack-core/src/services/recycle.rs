@@ -10,47 +10,54 @@ use crate::{CoreError, Result};
 
 pub(crate) async fn record(
     tx: &mut Transaction<'_, Postgres>,
+    org_id: i64,
     entity_type: &str,
     entity_id: i64,
     entity_name: &str,
     user_id: Option<i64>,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO deletions (entity_type, entity_id, entity_name, deleted_by, deleted_at)
-         VALUES ($1, $2, $3, $4, now())",
+        "INSERT INTO deletions (org_id, entity_type, entity_id, entity_name, deleted_by, deleted_at)
+         VALUES ($5, $1, $2, $3, $4, now())",
     )
     .bind(entity_type)
     .bind(entity_id)
     .bind(entity_name)
     .bind(user_id)
+    .bind(org_id)
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-pub async fn list(db: &PgPool, params: &ListParams) -> Result<Paginated<Deletion>> {
+pub async fn list(db: &PgPool, org_id: i64, params: &ListParams) -> Result<Paginated<Deletion>> {
     let data = sqlx::query_as::<_, Deletion>(
-        "SELECT * FROM deletions ORDER BY deleted_at DESC, id DESC LIMIT $1 OFFSET $2",
+        "SELECT * FROM deletions WHERE org_id = $3 ORDER BY deleted_at DESC, id DESC LIMIT $1 OFFSET $2",
     )
     .bind(params.limit())
     .bind(params.offset())
+    .bind(org_id)
     .fetch_all(db)
     .await?;
-    let (total,): (i64,) = sqlx::query_as("SELECT count(*) FROM deletions").fetch_one(db).await?;
+    let (total,): (i64,) = sqlx::query_as("SELECT count(*) FROM deletions WHERE org_id = $1")
+        .bind(org_id)
+        .fetch_one(db)
+        .await?;
     Ok(Paginated { data, total })
 }
 
-async fn fetch(db: &PgPool, deletion_id: i64) -> Result<Deletion> {
-    sqlx::query_as::<_, Deletion>("SELECT * FROM deletions WHERE id = $1")
+async fn fetch(db: &PgPool, org_id: i64, deletion_id: i64) -> Result<Deletion> {
+    sqlx::query_as::<_, Deletion>("SELECT * FROM deletions WHERE id = $1 AND org_id = $2")
         .bind(deletion_id)
+        .bind(org_id)
         .fetch_optional(db)
         .await?
         .ok_or(CoreError::NotFound)
 }
 
 /// Restore a soft-deleted entity (and, for books, the children deleted with it).
-pub async fn restore(db: &PgPool, deletion_id: i64) -> Result<Deletion> {
-    let deletion = fetch(db, deletion_id).await?;
+pub async fn restore(db: &PgPool, org_id: i64, deletion_id: i64) -> Result<Deletion> {
+    let deletion = fetch(db, org_id, deletion_id).await?;
     let mut tx = db.begin().await?;
     match deletion.entity_type.as_str() {
         "shelf" => {
@@ -134,8 +141,8 @@ pub async fn restore(db: &PgPool, deletion_id: i64) -> Result<Deletion> {
 }
 
 /// Permanently delete a recycle-bin entry's entity. Cannot be undone.
-pub async fn destroy(db: &PgPool, deletion_id: i64) -> Result<Deletion> {
-    let deletion = fetch(db, deletion_id).await?;
+pub async fn destroy(db: &PgPool, org_id: i64, deletion_id: i64) -> Result<Deletion> {
+    let deletion = fetch(db, org_id, deletion_id).await?;
     let mut tx = db.begin().await?;
     let table = match deletion.entity_type.as_str() {
         "shelf" => "shelves",

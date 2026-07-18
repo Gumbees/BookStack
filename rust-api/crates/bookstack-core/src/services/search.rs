@@ -69,7 +69,8 @@ fn parse_query(raw: &str) -> ParsedQuery {
 /// $1 query text, $2 tag name, $3 tag value, $4 in_name, $5 created_by.
 fn extra_filters(alias: &str, entity: &str) -> String {
     format!(
-        " AND ($2::text IS NULL OR EXISTS (
+        " AND {alias}.org_id = ANY($6)
+          AND ($2::text IS NULL OR EXISTS (
               SELECT 1 FROM tags t
               WHERE t.entity_type = '{entity}' AND t.entity_id = {alias}.id
                 AND lower(t.name) = lower($2)
@@ -88,34 +89,39 @@ fn subquery(entity: &str) -> String {
     };
     match entity {
         "page" => format!(
-            "SELECT 'page'::text AS entity_type, p.id AS id, p.name AS name, p.slug AS slug,
+            "SELECT 'page'::text AS entity_type, p.org_id AS org_id, o.slug AS org_slug,
+                    p.id AS id, p.name AS name, p.slug AS slug,
                     b.slug AS book_slug, ts_rank(p.search_vector, q) AS rank,
                     ts_headline('english', left(p.name || ' ' || p.markdown, 20000), q, {HEADLINE_OPTS}) AS preview
              FROM pages p
              JOIN books b ON b.id = p.book_id AND b.deleted_at IS NULL
+             JOIN orgs o ON o.id = p.org_id
              CROSS JOIN websearch_to_tsquery('english', $1) q
              WHERE p.deleted_at IS NULL AND p.draft = false
                AND ($1 = '' OR p.search_vector @@ q){extra}"
         ),
         "book" => format!(
-            "SELECT 'book'::text, b.id, b.name, b.slug, NULL::text, ts_rank(b.search_vector, q),
+            "SELECT 'book'::text, b.org_id, o.slug, b.id, b.name, b.slug, NULL::text, ts_rank(b.search_vector, q),
                     ts_headline('english', b.name || ' ' || b.description, q, {HEADLINE_OPTS})
              FROM books b
+             JOIN orgs o ON o.id = b.org_id
              CROSS JOIN websearch_to_tsquery('english', $1) q
              WHERE b.deleted_at IS NULL AND ($1 = '' OR b.search_vector @@ q){extra}"
         ),
         "chapter" => format!(
-            "SELECT 'chapter'::text, c.id, c.name, c.slug, b.slug, ts_rank(c.search_vector, q),
+            "SELECT 'chapter'::text, c.org_id, o.slug, c.id, c.name, c.slug, b.slug, ts_rank(c.search_vector, q),
                     ts_headline('english', c.name || ' ' || c.description, q, {HEADLINE_OPTS})
              FROM chapters c
              JOIN books b ON b.id = c.book_id AND b.deleted_at IS NULL
+             JOIN orgs o ON o.id = c.org_id
              CROSS JOIN websearch_to_tsquery('english', $1) q
              WHERE c.deleted_at IS NULL AND ($1 = '' OR c.search_vector @@ q){extra}"
         ),
         _ => format!(
-            "SELECT 'shelf'::text, s.id, s.name, s.slug, NULL::text, ts_rank(s.search_vector, q),
+            "SELECT 'shelf'::text, s.org_id, o.slug, s.id, s.name, s.slug, NULL::text, ts_rank(s.search_vector, q),
                     ts_headline('english', s.name || ' ' || s.description, q, {HEADLINE_OPTS})
              FROM shelves s
+             JOIN orgs o ON o.id = s.org_id
              CROSS JOIN websearch_to_tsquery('english', $1) q
              WHERE s.deleted_at IS NULL AND ($1 = '' OR s.search_vector @@ q){extra}"
         ),
@@ -130,12 +136,16 @@ fn finish_preview(raw: &str) -> String {
 
 pub async fn search(
     db: &PgPool,
+    org_ids: &[i64],
     raw_query: &str,
     type_filter: &[String],
     count: i64,
     offset: i64,
     user_id: Option<i64>,
 ) -> Result<Paginated<SearchResult>> {
+    if org_ids.is_empty() {
+        return Ok(Paginated { data: vec![], total: 0 });
+    }
     let parsed = parse_query(raw_query);
     // Operator-only queries (e.g. just a tag filter) are allowed; a fully
     // empty query is not.
@@ -160,14 +170,15 @@ pub async fn search(
     let offset = offset.max(0);
     let created_by = if parsed.created_by_me { user_id } else { None };
 
-    let rows: Vec<(String, i64, String, String, Option<String>, f32, String)> = sqlx::query_as(
-        &format!("SELECT * FROM ({union}) results ORDER BY rank DESC, entity_type, id LIMIT $6 OFFSET $7"),
+    let rows: Vec<(String, i64, String, i64, String, String, Option<String>, f32, String)> = sqlx::query_as(
+        &format!("SELECT * FROM ({union}) results ORDER BY rank DESC, entity_type, id LIMIT $7 OFFSET $8"),
     )
     .bind(&parsed.text)
     .bind(&parsed.tag_name)
     .bind(&parsed.tag_value)
     .bind(&parsed.in_name)
     .bind(created_by)
+    .bind(org_ids)
     .bind(limit)
     .bind(offset)
     .fetch_all(db)
@@ -179,13 +190,16 @@ pub async fn search(
         .bind(&parsed.tag_value)
         .bind(&parsed.in_name)
         .bind(created_by)
+        .bind(org_ids)
         .fetch_one(db)
         .await?;
 
     let data = rows
         .into_iter()
-        .map(|(entity_type, id, name, slug, book_slug, rank, preview)| SearchResult {
+        .map(|(entity_type, org_id, org_slug, id, name, slug, book_slug, rank, preview)| SearchResult {
             entity_type,
+            org_id,
+            org_slug,
             id,
             name,
             slug,

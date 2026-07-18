@@ -79,6 +79,7 @@ impl From<&User> for AuthUser {
 pub struct ApiToken {
     pub id: i64,
     pub user_id: i64,
+    pub org_id: Option<i64>,
     pub name: String,
     pub token_id: String,
     #[serde(skip)]
@@ -91,6 +92,7 @@ pub struct ApiToken {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Shelf {
     pub id: i64,
+    pub org_id: i64,
     pub name: String,
     pub slug: String,
     pub description: String,
@@ -103,6 +105,7 @@ pub struct Shelf {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Book {
     pub id: i64,
+    pub org_id: i64,
     pub name: String,
     pub slug: String,
     pub description: String,
@@ -115,6 +118,7 @@ pub struct Book {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Chapter {
     pub id: i64,
+    pub org_id: i64,
     pub book_id: i64,
     pub name: String,
     pub slug: String,
@@ -130,6 +134,7 @@ pub struct Chapter {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct PageMeta {
     pub id: i64,
+    pub org_id: i64,
     pub book_id: i64,
     pub chapter_id: Option<i64>,
     pub name: String,
@@ -146,6 +151,7 @@ pub struct PageMeta {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Page {
     pub id: i64,
+    pub org_id: i64,
     pub book_id: i64,
     pub chapter_id: Option<i64>,
     pub name: String,
@@ -163,7 +169,7 @@ pub struct Page {
 
 /// Explicit column list for `Page` selects (skips `ydoc_state` and
 /// `search_vector`, which are large and not part of the API surface).
-pub const PAGE_COLS: &str = "id, book_id, chapter_id, name, slug, markdown, html, priority, draft, revision_count, created_by, updated_by, created_at, updated_at";
+pub const PAGE_COLS: &str = "id, org_id, book_id, chapter_id, name, slug, markdown, html, priority, draft, revision_count, created_by, updated_by, created_at, updated_at";
 
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct PageRevision {
@@ -210,6 +216,7 @@ pub struct Comment {
 #[derive(Debug, Clone, FromRow, Serialize)]
 pub struct Deletion {
     pub id: i64,
+    pub org_id: i64,
     pub entity_type: String,
     pub entity_id: i64,
     pub entity_name: String,
@@ -235,6 +242,8 @@ pub enum ContentItem {
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchResult {
     pub entity_type: String,
+    pub org_id: i64,
+    pub org_slug: String,
     pub id: i64,
     pub name: String,
     pub slug: String,
@@ -281,4 +290,30 @@ impl ListParams {
         };
         format!("{col} {dir}")
     }
+}
+
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct Org {
+    pub id: i64,
+    pub name: String,
+    pub slug: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// An org a user belongs to, with their role inside it.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct OrgMembership {
+    pub org_id: i64,
+    pub name: String,
+    pub slug: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct OrgMemberInfo {
+    pub user_id: i64,
+    pub name: String,
+    pub email: String,
+    pub role: String,
 }

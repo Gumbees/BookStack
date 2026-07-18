@@ -14,26 +14,29 @@ pub struct ChapterDetails {
     pub pages: Vec<PageMeta>,
 }
 
-pub async fn list(db: &PgPool, params: &ListParams, book_id: Option<i64>) -> Result<Paginated<Chapter>> {
+pub async fn list(db: &PgPool, org_id: i64, params: &ListParams, book_id: Option<i64>) -> Result<Paginated<Chapter>> {
     let order = params.sort_sql(&["name", "id", "priority", "created_at", "updated_at"]);
     let filter = match book_id {
-        Some(_) => "AND book_id = $3",
+        Some(_) => "AND book_id = $4",
         None => "",
     };
     let sql = format!(
-        "SELECT * FROM chapters WHERE deleted_at IS NULL {filter} ORDER BY {order} LIMIT $1 OFFSET $2"
+        "SELECT * FROM chapters WHERE org_id = $3 AND deleted_at IS NULL {filter} ORDER BY {order} LIMIT $1 OFFSET $2"
     );
-    let mut query = sqlx::query_as::<_, Chapter>(&sql).bind(params.limit()).bind(params.offset());
+    let mut query = sqlx::query_as::<_, Chapter>(&sql)
+        .bind(params.limit())
+        .bind(params.offset())
+        .bind(org_id);
     if let Some(id) = book_id {
         query = query.bind(id);
     }
     let data = query.fetch_all(db).await?;
 
     let count_sql = match book_id {
-        Some(_) => "SELECT count(*) FROM chapters WHERE deleted_at IS NULL AND book_id = $1",
-        None => "SELECT count(*) FROM chapters WHERE deleted_at IS NULL",
+        Some(_) => "SELECT count(*) FROM chapters WHERE org_id = $1 AND deleted_at IS NULL AND book_id = $2",
+        None => "SELECT count(*) FROM chapters WHERE org_id = $1 AND deleted_at IS NULL",
     };
-    let mut count_query = sqlx::query_as::<_, (i64,)>(count_sql);
+    let mut count_query = sqlx::query_as::<_, (i64,)>(count_sql).bind(org_id);
     if let Some(id) = book_id {
         count_query = count_query.bind(id);
     }
@@ -41,18 +44,21 @@ pub async fn list(db: &PgPool, params: &ListParams, book_id: Option<i64>) -> Res
     Ok(Paginated { data, total })
 }
 
-pub async fn fetch(db: &PgPool, id: i64) -> Result<Chapter> {
-    sqlx::query_as::<_, Chapter>("SELECT * FROM chapters WHERE id = $1 AND deleted_at IS NULL")
-        .bind(id)
-        .fetch_optional(db)
-        .await?
-        .ok_or(CoreError::NotFound)
+pub async fn fetch(db: &PgPool, org_id: i64, id: i64) -> Result<Chapter> {
+    sqlx::query_as::<_, Chapter>(
+        "SELECT * FROM chapters WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(org_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or(CoreError::NotFound)
 }
 
-pub async fn get(db: &PgPool, id: i64) -> Result<ChapterDetails> {
-    let chapter = fetch(db, id).await?;
+pub async fn get(db: &PgPool, org_id: i64, id: i64) -> Result<ChapterDetails> {
+    let chapter = fetch(db, org_id, id).await?;
     let pages = sqlx::query_as::<_, PageMeta>(
-        "SELECT id, book_id, chapter_id, name, slug, priority, draft, revision_count, created_by, updated_by, created_at, updated_at
+        "SELECT id, org_id, book_id, chapter_id, name, slug, priority, draft, revision_count, created_by, updated_by, created_at, updated_at
          FROM pages WHERE chapter_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
     )
     .bind(id)
@@ -85,12 +91,12 @@ pub struct CreateChapter {
     pub tags: Vec<Tag>,
 }
 
-pub async fn create(db: &PgPool, user_id: i64, input: &CreateChapter) -> Result<ChapterDetails> {
+pub async fn create(db: &PgPool, org_id: i64, user_id: i64, input: &CreateChapter) -> Result<ChapterDetails> {
     let name = input.name.trim();
     if name.is_empty() {
         return Err(CoreError::validation("name is required"));
     }
-    books::fetch(db, input.book_id).await?;
+    books::fetch(db, org_id, input.book_id).await?;
     let book_id = input.book_id;
     let slug = unique_slug(name, |candidate| async move {
         let (exists,): (bool,) = sqlx::query_as(
@@ -106,9 +112,10 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateChapter) -> Result<
     let priority = next_priority(db, book_id).await?;
 
     let chapter = sqlx::query_as::<_, Chapter>(
-        "INSERT INTO chapters (book_id, name, slug, description, priority, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING *",
+        "INSERT INTO chapters (org_id, book_id, name, slug, description, priority, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING *",
     )
+    .bind(org_id)
     .bind(book_id)
     .bind(name)
     .bind(&slug)
@@ -120,7 +127,7 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateChapter) -> Result<
     if !input.tags.is_empty() {
         tags::set_for(db, "chapter", chapter.id, &input.tags).await?;
     }
-    get(db, chapter.id).await
+    get(db, org_id, chapter.id).await
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -131,8 +138,8 @@ pub struct UpdateChapter {
     pub tags: Option<Vec<Tag>>,
 }
 
-pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateChapter) -> Result<ChapterDetails> {
-    let current = fetch(db, id).await?;
+pub async fn update(db: &PgPool, org_id: i64, user_id: i64, id: i64, input: &UpdateChapter) -> Result<ChapterDetails> {
+    let current = fetch(db, org_id, id).await?;
     let name = input.name.clone().unwrap_or(current.name);
     let description = input.description.clone().unwrap_or(current.description);
     let priority = input.priority.unwrap_or(current.priority);
@@ -149,12 +156,12 @@ pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateChapter) -
     if let Some(t) = &input.tags {
         tags::set_for(db, "chapter", id, t).await?;
     }
-    get(db, id).await
+    get(db, org_id, id).await
 }
 
 /// Soft-delete a chapter; contained pages move to the book root.
-pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
-    let chapter = fetch(db, id).await?;
+pub async fn delete(db: &PgPool, org_id: i64, user_id: i64, id: i64) -> Result<()> {
+    let chapter = fetch(db, org_id, id).await?;
     let mut tx = db.begin().await?;
     let res = sqlx::query("UPDATE chapters SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
@@ -167,17 +174,18 @@ pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    super::recycle::record(&mut tx, "chapter", id, &chapter.name, Some(user_id)).await?;
+    super::recycle::record(&mut tx, org_id, "chapter", id, &chapter.name, Some(user_id)).await?;
     tx.commit().await?;
     Ok(())
 }
 
-/// Move a chapter (with all of its live pages) to a different book.
-pub async fn move_to_book(db: &PgPool, user_id: i64, id: i64, target_book_id: i64) -> Result<ChapterDetails> {
-    let chapter = fetch(db, id).await?;
-    books::fetch(db, target_book_id).await?;
+/// Move a chapter (with all of its live pages) to a different book in the
+/// same org.
+pub async fn move_to_book(db: &PgPool, org_id: i64, user_id: i64, id: i64, target_book_id: i64) -> Result<ChapterDetails> {
+    let chapter = fetch(db, org_id, id).await?;
+    books::fetch(db, org_id, target_book_id).await?;
     if chapter.book_id == target_book_id {
-        return get(db, id).await;
+        return get(db, org_id, id).await;
     }
     // Re-slug within the target book to keep (book_id, slug) unique.
     let name = chapter.name.clone();
@@ -231,5 +239,5 @@ pub async fn move_to_book(db: &PgPool, user_id: i64, id: i64, target_book_id: i6
         .await?;
     }
     tx.commit().await?;
-    get(db, id).await
+    get(db, org_id, id).await
 }

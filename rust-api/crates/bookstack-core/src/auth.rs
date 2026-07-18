@@ -34,14 +34,42 @@ struct Claims {
     name: String,
     role: String,
     exp: i64,
+    /// Org binding for OAuth-issued tokens; interactive session JWTs carry
+    /// none and pick the org per request via the `X-Org-Id` header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    org: Option<i64>,
 }
 
 pub fn issue_jwt(secret: &str, user: &User) -> Result<String> {
+    issue_jwt_claims(secret, user.id, &user.name, &user.role, None, Duration::days(7))
+}
+
+/// Issue a JWT bound to an org (used for OAuth access tokens).
+pub fn issue_jwt_for_org(
+    secret: &str,
+    user_id: i64,
+    name: &str,
+    role: &str,
+    org: Option<i64>,
+    ttl: Duration,
+) -> Result<String> {
+    issue_jwt_claims(secret, user_id, name, role, org, ttl)
+}
+
+fn issue_jwt_claims(
+    secret: &str,
+    user_id: i64,
+    name: &str,
+    role: &str,
+    org: Option<i64>,
+    ttl: Duration,
+) -> Result<String> {
     let claims = Claims {
-        sub: user.id,
-        name: user.name.clone(),
-        role: user.role.clone(),
-        exp: (Utc::now() + Duration::days(7)).timestamp(),
+        sub: user_id,
+        name: name.to_string(),
+        role: role.to_string(),
+        exp: (Utc::now() + ttl).timestamp(),
+        org,
     };
     encode(
         &Header::default(),
@@ -53,6 +81,11 @@ pub fn issue_jwt(secret: &str, user: &User) -> Result<String> {
 
 /// Validate a JWT and load the current user record.
 pub async fn verify_jwt(db: &PgPool, secret: &str, token: &str) -> Result<AuthUser> {
+    Ok(verify_jwt_full(db, secret, token).await?.0)
+}
+
+/// Validate a JWT, returning the user plus any org binding in the token.
+pub async fn verify_jwt_full(db: &PgPool, secret: &str, token: &str) -> Result<(AuthUser, Option<i64>)> {
     let data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
@@ -65,7 +98,7 @@ pub async fn verify_jwt(db: &PgPool, secret: &str, token: &str) -> Result<AuthUs
         .fetch_optional(db)
         .await?
         .ok_or(CoreError::Unauthorized)?;
-    Ok(AuthUser::from(&user))
+    Ok((AuthUser::from(&user), data.claims.org))
 }
 
 pub async fn login(db: &PgPool, secret: &str, email: &str, password: &str) -> Result<(String, AuthUser)> {
@@ -104,17 +137,19 @@ pub struct CreatedToken {
     pub secret: String,
 }
 
-/// Create a BookStack-style API token (`Authorization: Token <id>:<secret>`).
-pub async fn create_api_token(db: &PgPool, user_id: i64, name: &str) -> Result<CreatedToken> {
+/// Create a BookStack-style API token (`Authorization: Token <id>:<secret>`),
+/// bound to one org.
+pub async fn create_api_token(db: &PgPool, user_id: i64, org_id: i64, name: &str) -> Result<CreatedToken> {
     let token_id = random_token(32);
     let secret = random_token(32);
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO api_tokens (user_id, name, token_id, secret_hash) VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO api_tokens (user_id, org_id, name, token_id, secret_hash) VALUES ($1, $5, $2, $3, $4) RETURNING id",
     )
     .bind(user_id)
     .bind(name)
     .bind(&token_id)
     .bind(sha256_hex(&secret))
+    .bind(org_id)
     .fetch_one(db)
     .await?;
     Ok(CreatedToken {
@@ -146,8 +181,9 @@ pub async fn delete_api_token(db: &PgPool, user_id: i64, token_pk: i64) -> Resul
     Ok(())
 }
 
-/// Validate an `Authorization: Token id:secret` header value.
-pub async fn verify_api_token(db: &PgPool, header_value: &str) -> Result<AuthUser> {
+/// Validate an `Authorization: Token id:secret` header value. Returns the
+/// user plus the org the token is bound to.
+pub async fn verify_api_token(db: &PgPool, header_value: &str) -> Result<(AuthUser, Option<i64>)> {
     let (token_id, secret) = header_value
         .split_once(':')
         .ok_or(CoreError::Unauthorized)?;
@@ -174,7 +210,7 @@ pub async fn verify_api_token(db: &PgPool, header_value: &str) -> Result<AuthUse
         .execute(db)
         .await
         .ok();
-    Ok(AuthUser::from(&user))
+    Ok((AuthUser::from(&user), token.org_id))
 }
 
 #[cfg(test)]

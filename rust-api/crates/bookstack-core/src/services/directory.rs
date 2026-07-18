@@ -32,31 +32,38 @@ struct Raw {
     pages: Vec<(i64, i64, Option<i64>, String, String)>,
 }
 
-async fn load(db: &PgPool) -> Result<Raw> {
+async fn load(db: &PgPool, org_id: i64) -> Result<Raw> {
     Ok(Raw {
         shelves: sqlx::query_as(
-            "SELECT id, name, slug FROM shelves WHERE deleted_at IS NULL ORDER BY name",
+            "SELECT id, name, slug FROM shelves WHERE org_id = $1 AND deleted_at IS NULL ORDER BY name",
         )
+        .bind(org_id)
         .fetch_all(db)
         .await?,
         shelf_books: sqlx::query_as(
-            r#"SELECT shelf_id, book_id FROM shelf_books ORDER BY shelf_id, "order""#,
+            r#"SELECT sb.shelf_id, sb.book_id FROM shelf_books sb
+               JOIN shelves s ON s.id = sb.shelf_id WHERE s.org_id = $1
+               ORDER BY sb.shelf_id, sb."order""#,
         )
+        .bind(org_id)
         .fetch_all(db)
         .await?,
         books: sqlx::query_as(
-            "SELECT id, name, slug FROM books WHERE deleted_at IS NULL ORDER BY name",
+            "SELECT id, name, slug FROM books WHERE org_id = $1 AND deleted_at IS NULL ORDER BY name",
         )
+        .bind(org_id)
         .fetch_all(db)
         .await?,
         chapters: sqlx::query_as(
-            "SELECT id, book_id, name, slug FROM chapters WHERE deleted_at IS NULL ORDER BY priority, id",
+            "SELECT id, book_id, name, slug FROM chapters WHERE org_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
         )
+        .bind(org_id)
         .fetch_all(db)
         .await?,
         pages: sqlx::query_as(
-            "SELECT id, book_id, chapter_id, name, slug FROM pages WHERE deleted_at IS NULL ORDER BY priority, id",
+            "SELECT id, book_id, chapter_id, name, slug FROM pages WHERE org_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
         )
+        .bind(org_id)
         .fetch_all(db)
         .await?,
     })
@@ -123,8 +130,8 @@ fn shelf_node(raw: &Raw, id: i64, name: &str, slug: &str, depth_left: Option<u32
 }
 
 /// Build the tree. `depth` counts levels below the roots (0 = roots only).
-pub async fn tree(db: &PgPool, scope: Scope, depth: Option<u32>) -> Result<Vec<Node>> {
-    let raw = load(db).await?;
+pub async fn tree(db: &PgPool, org_id: i64, scope: Scope, depth: Option<u32>) -> Result<Vec<Node>> {
+    let raw = load(db, org_id).await?;
     match scope {
         Scope::All => {
             let mut roots: Vec<Node> = raw

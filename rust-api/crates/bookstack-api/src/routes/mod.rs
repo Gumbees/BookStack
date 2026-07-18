@@ -1,6 +1,10 @@
+pub mod admin;
 pub mod auth;
 pub mod content;
 pub mod mcp;
+pub mod oauth;
+pub mod org;
+pub mod sso;
 pub mod ws;
 
 use axum::routing::{delete, get, post, put};
@@ -18,6 +22,25 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/me", get(auth::me))
         .route("/auth/tokens", get(auth::list_tokens).post(auth::create_token))
         .route("/auth/tokens/{id}", delete(auth::delete_token))
+        // orgs
+        .route("/orgs", get(org::my_orgs).post(org::create_org))
+        .route("/orgs/current", get(org::current))
+        .route("/orgs/{org_id}/members", get(org::members).post(org::add_member))
+        .route("/orgs/{org_id}/members/{member_id}", delete(org::remove_member))
+        // SSO login (public: the login page needs these before auth)
+        .route("/auth/providers", get(sso::public_providers))
+        .route("/auth/oidc/{id}/start", get(sso::start))
+        .route("/auth/oidc/callback", get(sso::callback))
+        // admin settings: global + per-org auth config
+        .route("/admin/settings", get(admin::get_global_settings).put(admin::update_global_settings))
+        .route("/admin/auth-providers", get(admin::list_global_providers).post(admin::create_global_provider))
+        .route("/admin/auth-providers/{id}", put(admin::update_global_provider).delete(admin::delete_global_provider))
+        .route("/orgs/{org_id}/settings", get(admin::get_org_settings).put(admin::update_org_settings))
+        .route("/orgs/{org_id}/auth-providers", get(admin::list_org_providers).post(admin::create_org_provider))
+        .route("/orgs/{org_id}/auth-providers/{id}", put(admin::update_org_provider).delete(admin::delete_org_provider))
+        // OAuth consent plumbing (authed SPA calls)
+        .route("/oauth/client/{client_id}", get(oauth::client_info))
+        .route("/oauth/approve", post(oauth::approve))
         // shelves
         .route("/shelves", get(content::list_shelves).post(content::create_shelf))
         .route("/shelves/{id}", get(content::get_shelf).put(content::update_shelf).delete(content::delete_shelf))
@@ -42,6 +65,9 @@ pub fn router(state: AppState) -> Router {
         .route("/pages/{id}/collab/editors", get(content::collab_editors))
         // search / users / system
         .route("/search", get(content::search))
+        .route("/search/semantic", get(content::semantic_search))
+        .route("/search/reembed", post(content::reembed))
+        .route("/search/embedding-status", get(content::embedding_status))
         .route("/users", get(content::list_users).post(content::create_user))
         .route("/users/{id}", get(content::get_user).put(content::update_user).delete(content::delete_user))
         .route("/system", get(content::system_info))
@@ -55,6 +81,14 @@ pub fn router(state: AppState) -> Router {
         .nest("/api", api)
         .route("/ws/pages/{page_id}", get(ws::page_ws))
         .route("/mcp", post(mcp::handle_post).get(mcp::handle_get).delete(mcp::handle_delete))
+        // OAuth authorization server (MCP spec: RFC 8414 + 9728 discovery)
+        .route("/.well-known/oauth-authorization-server", get(oauth::authorization_server_metadata))
+        .route("/.well-known/oauth-authorization-server/mcp", get(oauth::authorization_server_metadata))
+        .route("/.well-known/oauth-protected-resource", get(oauth::protected_resource_metadata))
+        .route("/.well-known/oauth-protected-resource/mcp", get(oauth::protected_resource_metadata))
+        .route("/oauth/register", post(oauth::register))
+        .route("/oauth/authorize", get(oauth::authorize))
+        .route("/oauth/token", post(oauth::token))
         .fallback_service(spa)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())

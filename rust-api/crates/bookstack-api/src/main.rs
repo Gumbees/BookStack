@@ -21,7 +21,14 @@ async fn main() -> anyhow::Result<()> {
     let bind_addr = config.bind_addr.clone();
     tracing::info!("connecting to {}", config.database_url);
     let core = Core::connect(config).await?;
-    let state = AppState::new(core);
+    let semantic = bookstack_semantic::SemanticConfig::from_env().map(|cfg| {
+        tracing::info!("semantic search enabled (model: {}, provider: {})", cfg.model, cfg.api_url);
+        bookstack_semantic::SemanticEngine::start(core.clone(), cfg)
+    });
+    if semantic.is_none() {
+        tracing::info!("semantic search disabled (EMBEDDINGS_API_URL not set)");
+    }
+    let state = AppState::new(core, semantic);
 
     let app = routes::router(state.clone());
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

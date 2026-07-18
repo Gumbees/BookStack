@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 bookstack-core.workspace = true
 bookstack-collab.workspace = true
+bookstack-semantic.workspace = true
 bookstack-mcp.workspace = true
 tokio.workspace = true
 axum.workspace = true
@@ -24,4 +25,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 futures-util.workspace = true
 dotenvy.workspace = true
+reqwest.workspace = true
+jsonwebtoken.workspace = true
+rand.workspace = true
+sha2.workspace = true
+base64.workspace = true
 anyhow.workspace = true

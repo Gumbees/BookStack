@@ -14,51 +14,60 @@ pub struct BookDetails {
     pub contents: Vec<ContentItem>,
 }
 
-pub async fn list(db: &PgPool, params: &ListParams) -> Result<Paginated<Book>> {
+pub async fn list(db: &PgPool, org_id: i64, params: &ListParams) -> Result<Paginated<Book>> {
     let order = params.sort_sql(&["name", "id", "created_at", "updated_at"]);
     let data = sqlx::query_as::<_, Book>(&format!(
-        "SELECT * FROM books WHERE deleted_at IS NULL ORDER BY {order} LIMIT $1 OFFSET $2"
+        "SELECT * FROM books WHERE org_id = $3 AND deleted_at IS NULL ORDER BY {order} LIMIT $1 OFFSET $2"
     ))
     .bind(params.limit())
     .bind(params.offset())
+    .bind(org_id)
     .fetch_all(db)
     .await?;
-    let (total,): (i64,) = sqlx::query_as("SELECT count(*) FROM books WHERE deleted_at IS NULL")
-        .fetch_one(db)
-        .await?;
+    let (total,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM books WHERE org_id = $1 AND deleted_at IS NULL")
+            .bind(org_id)
+            .fetch_one(db)
+            .await?;
     Ok(Paginated { data, total })
 }
 
-pub async fn fetch(db: &PgPool, id: i64) -> Result<Book> {
-    sqlx::query_as::<_, Book>("SELECT * FROM books WHERE id = $1 AND deleted_at IS NULL")
-        .bind(id)
-        .fetch_optional(db)
-        .await?
-        .ok_or(CoreError::NotFound)
+pub async fn fetch(db: &PgPool, org_id: i64, id: i64) -> Result<Book> {
+    sqlx::query_as::<_, Book>(
+        "SELECT * FROM books WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(org_id)
+    .fetch_optional(db)
+    .await?
+    .ok_or(CoreError::NotFound)
 }
 
-pub async fn get(db: &PgPool, id: i64) -> Result<BookDetails> {
-    let book = fetch(db, id).await?;
+pub async fn get(db: &PgPool, org_id: i64, id: i64) -> Result<BookDetails> {
+    let book = fetch(db, org_id, id).await?;
     let tags = tags::get_for(db, "book", id).await?;
-    let contents = contents(db, id).await?;
+    let contents = contents(db, org_id, id).await?;
     Ok(BookDetails { book, tags, contents })
 }
 
-pub async fn get_by_slug(db: &PgPool, slug: &str) -> Result<BookDetails> {
-    let row: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM books WHERE slug = $1 AND deleted_at IS NULL")
-            .bind(slug)
-            .fetch_optional(db)
-            .await?;
+pub async fn get_by_slug(db: &PgPool, org_id: i64, slug: &str) -> Result<BookDetails> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        "SELECT id FROM books WHERE slug = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(slug)
+    .bind(org_id)
+    .fetch_optional(db)
+    .await?;
     match row {
-        Some((id,)) => get(db, id).await,
+        Some((id,)) => get(db, org_id, id).await,
         None => Err(CoreError::NotFound),
     }
 }
 
 /// Build the ordered contents tree of a book (chapters with nested pages,
 /// plus top-level pages), matching BookStack's book view.
-pub async fn contents(db: &PgPool, book_id: i64) -> Result<Vec<ContentItem>> {
+pub async fn contents(db: &PgPool, org_id: i64, book_id: i64) -> Result<Vec<ContentItem>> {
+    fetch(db, org_id, book_id).await?;
     let chapters = sqlx::query_as::<_, Chapter>(
         "SELECT * FROM chapters WHERE book_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
     )
@@ -66,7 +75,7 @@ pub async fn contents(db: &PgPool, book_id: i64) -> Result<Vec<ContentItem>> {
     .fetch_all(db)
     .await?;
     let pages = sqlx::query_as::<_, PageMeta>(
-        "SELECT id, book_id, chapter_id, name, slug, priority, draft, revision_count, created_by, updated_by, created_at, updated_at
+        "SELECT id, org_id, book_id, chapter_id, name, slug, priority, draft, revision_count, created_by, updated_by, created_at, updated_at
          FROM pages WHERE book_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
     )
     .bind(book_id)
@@ -102,15 +111,16 @@ pub struct CreateBook {
     pub tags: Vec<Tag>,
 }
 
-pub async fn create(db: &PgPool, user_id: i64, input: &CreateBook) -> Result<BookDetails> {
+pub async fn create(db: &PgPool, org_id: i64, user_id: i64, input: &CreateBook) -> Result<BookDetails> {
     let name = input.name.trim();
     if name.is_empty() {
         return Err(CoreError::validation("name is required"));
     }
     let slug = unique_slug(name, |candidate| async move {
         let (exists,): (bool,) = sqlx::query_as(
-            "SELECT EXISTS(SELECT 1 FROM books WHERE slug = $1 AND deleted_at IS NULL)",
+            "SELECT EXISTS(SELECT 1 FROM books WHERE org_id = $1 AND slug = $2 AND deleted_at IS NULL)",
         )
+        .bind(org_id)
         .bind(candidate)
         .fetch_one(db)
         .await?;
@@ -119,8 +129,9 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateBook) -> Result<Boo
     .await?;
 
     let book = sqlx::query_as::<_, Book>(
-        "INSERT INTO books (name, slug, description, created_by, updated_by) VALUES ($1, $2, $3, $4, $4) RETURNING *",
+        "INSERT INTO books (org_id, name, slug, description, created_by, updated_by) VALUES ($1, $2, $3, $4, $5, $5) RETURNING *",
     )
+    .bind(org_id)
     .bind(name)
     .bind(&slug)
     .bind(input.description.trim())
@@ -130,7 +141,7 @@ pub async fn create(db: &PgPool, user_id: i64, input: &CreateBook) -> Result<Boo
     if !input.tags.is_empty() {
         tags::set_for(db, "book", book.id, &input.tags).await?;
     }
-    get(db, book.id).await
+    get(db, org_id, book.id).await
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -140,8 +151,8 @@ pub struct UpdateBook {
     pub tags: Option<Vec<Tag>>,
 }
 
-pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateBook) -> Result<BookDetails> {
-    let current = fetch(db, id).await?;
+pub async fn update(db: &PgPool, org_id: i64, user_id: i64, id: i64, input: &UpdateBook) -> Result<BookDetails> {
+    let current = fetch(db, org_id, id).await?;
     let name = input.name.clone().unwrap_or(current.name);
     let description = input.description.clone().unwrap_or(current.description);
     sqlx::query(
@@ -156,13 +167,13 @@ pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateBook) -> R
     if let Some(t) = &input.tags {
         tags::set_for(db, "book", id, t).await?;
     }
-    get(db, id).await
+    get(db, org_id, id).await
 }
 
 /// Soft-delete a book together with its chapters and pages. All rows share
 /// the same transaction timestamp so a restore can bring them back together.
-pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
-    let book = fetch(db, id).await?;
+pub async fn delete(db: &PgPool, org_id: i64, user_id: i64, id: i64) -> Result<()> {
+    let book = fetch(db, org_id, id).await?;
     let mut tx = db.begin().await?;
     let res = sqlx::query("UPDATE books SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
@@ -179,7 +190,7 @@ pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    super::recycle::record(&mut tx, "book", id, &book.name, Some(user_id)).await?;
+    super::recycle::record(&mut tx, org_id, "book", id, &book.name, Some(user_id)).await?;
     tx.commit().await?;
     Ok(())
 }

@@ -118,7 +118,7 @@ pub async fn ensure_admin(db: &PgPool, email: &str, password: &str) -> Result<Op
     if count > 0 {
         return Ok(None);
     }
-    create(
+    let user = create(
         db,
         &CreateUser {
             name: "Admin".to_string(),
@@ -127,6 +127,12 @@ pub async fn ensure_admin(db: &PgPool, email: &str, password: &str) -> Result<Op
             role: Some("admin".to_string()),
         },
     )
+    .await?;
+    sqlx::query(
+        "INSERT INTO org_members (org_id, user_id, role) VALUES (1, $1, 'admin') ON CONFLICT DO NOTHING",
+    )
+    .bind(user.id)
+    .execute(db)
     .await?;
     Ok(Some((email.to_string(), password.to_string())))
 }

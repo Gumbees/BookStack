@@ -1,11 +1,15 @@
+pub mod auth_providers;
 pub mod books;
 pub mod chapters;
 pub mod comments;
 pub mod directory;
 pub mod exports;
+pub mod oauth;
+pub mod orgs;
 pub mod pages;
 pub mod recycle;
 pub mod search;
+pub mod settings;
 pub mod shelves;
 pub mod system;
 pub mod tags;

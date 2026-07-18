@@ -1,5 +1,11 @@
 # BookStack
 
+> **🦀 Rust rewrite in progress on this fork:** a new Rust (Axum) API with
+> PostgreSQL, realtime collaborative editing (Yjs CRDTs), a built-in
+> `bookstack-mcp` server, and a Solid.js frontend live in
+> [`rust-api/`](rust-api/README.md) and [`frontend/`](frontend/). The legacy
+> PHP application below remains untouched during the transition.
+
 [![GitHub release](https://img.shields.io/github/release/BookStackApp/BookStack.svg)](https://github.com/BookStackApp/BookStack/releases/latest)
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/BookStackApp/BookStack/blob/development/LICENSE)
 [![Crowdin](https://badges.crowdin.net/bookstack/localized.svg)](https://crowdin.com/project/bookstack)

@@ -1,0 +1,16 @@
+[package]
+name = "bookstack-collab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bookstack-core.workspace = true
+tokio.workspace = true
+dashmap.workspace = true
+futures-util.workspace = true
+yrs.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true

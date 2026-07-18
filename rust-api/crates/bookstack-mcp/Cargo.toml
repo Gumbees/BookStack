@@ -1,0 +1,12 @@
+[package]
+name = "bookstack-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bookstack-core.workspace = true
+bookstack-collab.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

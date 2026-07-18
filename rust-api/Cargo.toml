@@ -1,0 +1,40 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+bookstack-core = { path = "crates/bookstack-core" }
+bookstack-collab = { path = "crates/bookstack-collab" }
+bookstack-mcp = { path = "crates/bookstack-mcp" }
+
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "migrate"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+pulldown-cmark = "0.13"
+ammonia = "4"
+dashmap = "6"
+futures-util = "0.3"
+yrs = { version = "0.23", features = ["sync"] }
+dotenvy = "0.15"
+
+[profile.release]
+lto = "thin"

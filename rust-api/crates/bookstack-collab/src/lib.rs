@@ -40,7 +40,21 @@ pub enum CollabError {
     Protocol(String),
     #[error("room is closed")]
     Closed,
+    #[error("page content was just replaced; reconnect with a fresh document")]
+    RecentlyInvalidated,
 }
+
+/// WebSocket close code sent when a room is invalidated because the page
+/// content was replaced out-of-band (REST/MCP edit). Clients must respond by
+/// discarding their local Y.Doc and reconnecting with a fresh one — resyncing
+/// the old doc would merge stale CRDT state back in and duplicate content.
+pub const CLOSE_CONTENT_REPLACED: u16 = 4409;
+
+/// How long joins are refused after an invalidation, so a stale client's
+/// automatic reconnect (still carrying the old doc) can't write old state
+/// into the freshly-seeded room before the frontend rebuilds its document.
+/// The frontend rebuilds after 1.8s — just past this window.
+const INVALIDATION_WINDOW: Duration = Duration::from_millis(1500);
 
 pub type Result<T> = std::result::Result<T, CollabError>;
 
@@ -185,7 +199,7 @@ impl Room {
         if seen_clients.is_empty() {
             return;
         }
-        let mut awareness = self.awareness.lock().await;
+        let awareness = self.awareness.lock().await;
         for client_id in seen_clients {
             awareness.remove_state(*client_id);
         }
@@ -222,6 +236,7 @@ impl Room {
 pub struct CollabEngine {
     core: Core,
     rooms: DashMap<i64, Arc<Room>>,
+    invalidated: DashMap<i64, std::time::Instant>,
     create_lock: Mutex<()>,
 }
 
@@ -237,6 +252,7 @@ impl CollabEngine {
         let engine = Arc::new(CollabEngine {
             core,
             rooms: DashMap::new(),
+            invalidated: DashMap::new(),
             create_lock: Mutex::new(()),
         });
         // Periodic persistence sweep for dirty rooms.
@@ -264,6 +280,13 @@ impl CollabEngine {
     /// Join (or create) the room for a page.
     pub async fn join(&self, page_id: i64) -> Result<Session> {
         let _guard = self.create_lock.lock().await;
+        if let Some(entry) = self.invalidated.get(&page_id) {
+            if entry.elapsed() < INVALIDATION_WINDOW {
+                return Err(CollabError::RecentlyInvalidated);
+            }
+            drop(entry);
+            self.invalidated.remove(&page_id);
+        }
         let room = match self.rooms.get(&page_id) {
             Some(existing) if !existing.closed.load(Ordering::SeqCst) => existing.clone(),
             _ => {
@@ -323,11 +346,20 @@ impl CollabEngine {
 
     /// Force-close a page's room without persisting, discarding in-memory CRDT
     /// state. Used when page content is replaced through the REST/MCP API so
-    /// editors reconnect against the new content.
+    /// editors reconnect against the new content. Joins are refused for a
+    /// short window so stale auto-reconnects can't write old doc state into
+    /// the fresh room; clients see close code [`CLOSE_CONTENT_REPLACED`] and
+    /// must rebuild their local document.
     pub async fn invalidate(&self, page_id: i64) {
         let _guard = self.create_lock.lock().await;
-        if let Some((_, room)) = self.rooms.remove(&page_id) {
+        let had_room = if let Some((_, room)) = self.rooms.remove(&page_id) {
             room.close();
+            true
+        } else {
+            false
+        };
+        if had_room {
+            self.invalidated.insert(page_id, std::time::Instant::now());
         }
     }
 

@@ -26,6 +26,35 @@ pub fn sanitize(html: &str) -> String {
         .to_string()
 }
 
+/// Extract readable plain text from markdown (for plaintext exports).
+pub fn to_plaintext(markdown: &str) -> String {
+    use pulldown_cmark::{Event, Tag, TagEnd};
+
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let mut out = String::with_capacity(markdown.len());
+    for event in Parser::new_ext(markdown, options) {
+        match event {
+            Event::Text(text) | Event::Code(text) => out.push_str(&text),
+            Event::SoftBreak | Event::HardBreak => out.push('\n'),
+            Event::Start(Tag::Item) => out.push_str("- "),
+            Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item)
+            | Event::End(TagEnd::CodeBlock | TagEnd::BlockQuote(_) | TagEnd::TableRow) => {
+                if !out.ends_with('\n') {
+                    out.push('\n');
+                }
+            }
+            Event::End(TagEnd::TableCell) => out.push('\t'),
+            Event::Rule => out.push_str("\n---\n"),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
 /// Escape text for safe embedding in HTML.
 pub fn escape_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

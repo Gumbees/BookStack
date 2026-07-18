@@ -113,8 +113,11 @@ previews that are HTML-escaped server-side and highlighted with `<mark>`.
   authoritative doc, rebroadcasts to the room, and every ~4s (plus on last
   disconnect) flattens the doc back to `markdown`/`html` in Postgres. The last
   editor leaving records a `Collaborative editing session` revision.
-- REST/MCP content writes **invalidate** any live room (clients auto-reconnect
-  and reseed) so out-of-band edits can't silently fork the CRDT history.
+- REST/MCP content writes **invalidate** any live room: the server closes
+  editor sockets with WebSocket code **4409** (`content-replaced`) and
+  refuses joins for a short window so a stale client's auto-reconnect can't
+  merge old CRDT state back in (which would duplicate content). The SPA
+  editor reacts to 4409 by discarding its local Y.Doc and rebuilding fresh.
 - Presence (names/colors/cursors) rides the awareness protocol; departing
   clients' states are removed and rebroadcast by the server.
 
@@ -122,13 +125,43 @@ previews that are HTML-escaped server-side and highlighted with `<mark>`.
 
 MCP Streamable HTTP transport (2025-06-18, also accepts 2025-03-26 /
 2024-11-05): `POST /mcp` with JSON-RPC 2.0, plain-JSON responses, stateless
-sessions, same `Authorization` header as REST. 21 tools:
+sessions, same `Authorization` header as REST.
 
-`search_content`, `list_shelves`, `get_shelf`, `create_shelf`, `list_books`,
-`get_book`, `create_book`, `update_book`, `delete_book`, `list_chapters`,
-`get_chapter`, `create_chapter`, `list_pages`, `get_page`, `create_page`,
-`update_page`, `append_to_page`, `move_page`, `delete_page`,
-`list_page_revisions`, `get_system_info`.
+The tool surface is ported from
+[`bees-roadhouse/bookstack-mcp`](https://github.com/bees-roadhouse/bookstack-mcp)
+(v0.13.0) — same tool names, argument conventions (`page_id`, `book_id`, …),
+input schemas, response formats, and behaviors — so clients configured for
+that server work against this endpoint for every feature this backend
+supports. Ported conventions include:
+
+- **Surgical editing suite**: `edit_page` (exact-string replace with
+  ambiguity detection), `replace_section` (heading-scoped, level-aware),
+  `insert_after` (line-anchored), `append_to_page` — same algorithms.
+- **Required meaningful descriptions** on `create_shelf` / `create_book` /
+  `create_chapter`, with length and placeholder rejection ("TODO", "n/a", …).
+- **Duplicate-title stripping**: a leading `# <page name>` H1 is removed
+  from create/update content.
+- **Live structure tree** (shelves → books → chapters with IDs and truncated
+  descriptions) embedded in `initialize` instructions, plus style/placement
+  guidance and URL patterns for clickable links.
+- **Slim text success responses** for mutations (`Page created successfully.
+  / Page ID: … / URL: …`), pretty-JSON for reads, `Error:` text with
+  `isError` for failures, and a `_meta.time` block
+  (`now_unix`/`now_utc`/`now_local`/`now_human`/`timezone`) on every
+  `tools/call` response (`TIMEZONE` env).
+- `directory` (scoped, depth-limited tree), exports
+  (markdown/plaintext/html), moves (`move_page`, `move_chapter`,
+  `move_book_to_shelf`), comments, the recycle bin
+  (list/restore/destroy), users, roles, and search operators
+  (`{type:page}`, `[tag=value]`, `{in_name:term}`, `{created_by:me}`).
+
+46 tools total. Not ported (features this backend doesn't have yet, so the
+tools are simply not registered — mirroring upstream's conditional
+registration): attachments, image gallery/staging uploads, per-content
+permissions, audit log, and the semantic-search/embedding suite
+(`semantic_search`, `reembed`, `embedding_status`, rerank). pgvector is the
+natural path for semantic search here, since the index store is already
+Postgres.
 
 Example client config (Claude Code):
 
@@ -142,17 +175,28 @@ collab engine (see invalidation above).
 
 ## Testing done
 
-- `cargo test` unit tests (slugs, markdown pipeline, auth hashing).
+- `cargo test` unit tests (slugs, markdown pipeline, auth hashing, search
+  operator parsing, section-replace bounds, title stripping, description
+  validation, tool-surface count lock).
 - End-to-end against Postgres 16: REST CRUD, contents tree, FTS, revisions.
-- MCP: initialize/tools-list/tools-call round trips.
+- MCP: full parity sweep — tools/list count, structure-tree instructions,
+  `_meta.time`, description rejection, title stripping, `edit_page`
+  ambiguity errors, `replace_section`/`insert_after`/`append_to_page`
+  round-trips, exports, `directory` scoping, comments (threads + updates),
+  operator search (`{type:}` `{in_name:}` `[tag=value]`), all three move
+  tools, recycle-bin delete→restore→destroy, role listing, and viewer-role
+  write rejection.
 - Realtime: two headless `yjs` clients converging concurrent edits, awareness
-  join/leave, debounce persistence, revision snapshot on room close; plus a
+  join/leave, debounce persistence, revision snapshot on room close; a
   two-browser Playwright session typing into the same CodeMirror editor with
-  live sync both ways.
+  live sync both ways; and the invalidation flow (MCP edit → live client
+  closed with 4409 → stale reconnect rejected → rebuilt client sees exactly
+  the new content with no CRDT duplication).
 
 ## Deliberate scope cuts (vs. upstream BookStack)
 
-Attachments/images, comments, the recycle bin UI (soft deletes exist),
-fine-grained entity permissions, LDAP/OIDC/social auth, exports, theming, and
-the WYSIWYG editor (markdown-first with live collab instead). The legacy PHP
-app remains untouched in the repo root during the transition.
+Attachments/images, fine-grained entity permissions, LDAP/OIDC/social auth,
+audit log, theming, semantic search embeddings, and the WYSIWYG editor
+(markdown-first with live collab instead). Comments and the recycle bin are
+available via MCP; frontend UI for them is future work. The legacy PHP app
+remains untouched in the repo root during the transition.

@@ -313,14 +313,18 @@ pub async fn move_page(
     get(db, id).await
 }
 
-pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
+pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
+    let page = fetch(db, id).await?;
+    let mut tx = db.begin().await?;
     let res = sqlx::query("UPDATE pages SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
-        .execute(db)
+        .execute(&mut *tx)
         .await?;
     if res.rows_affected() == 0 {
         return Err(CoreError::NotFound);
     }
+    super::recycle::record(&mut tx, "page", id, &page.name, Some(user_id)).await?;
+    tx.commit().await?;
     Ok(())
 }
 

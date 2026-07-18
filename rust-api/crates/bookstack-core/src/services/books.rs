@@ -159,8 +159,10 @@ pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateBook) -> R
     get(db, id).await
 }
 
-/// Soft-delete a book together with its chapters and pages.
-pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
+/// Soft-delete a book together with its chapters and pages. All rows share
+/// the same transaction timestamp so a restore can bring them back together.
+pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
+    let book = fetch(db, id).await?;
     let mut tx = db.begin().await?;
     let res = sqlx::query("UPDATE books SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
@@ -177,6 +179,7 @@ pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    super::recycle::record(&mut tx, "book", id, &book.name, Some(user_id)).await?;
     tx.commit().await?;
     Ok(())
 }

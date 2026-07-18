@@ -32,9 +32,14 @@ export default function PageEditor() {
   const [peers, setPeers] = createSignal<Peer[]>([]);
   const [connection, setConnection] = createSignal<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [saveState, setSaveState] = createSignal<'idle' | 'saving' | 'saved'>('idle');
+  // Bumped when the server closes the room with code 4409 (content replaced
+  // out-of-band): the whole doc + provider + editor must be rebuilt fresh —
+  // resyncing the old Y.Doc would merge stale state back in.
+  const [generation, setGeneration] = createSignal(0);
   let editorHost: HTMLDivElement | undefined;
 
   createEffect(() => {
+    generation();
     const p = page();
     const user = auth.user();
     if (!p || !user || !editorHost) return;
@@ -55,7 +60,16 @@ export default function PageEditor() {
     provider.on('status', (event: { status: string }) => {
       setConnection(event.status === 'connected' ? 'connected' : 'connecting');
     });
-    provider.on('connection-close', () => setConnection('disconnected'));
+    provider.on('connection-close', (event: CloseEvent | null) => {
+      setConnection('disconnected');
+      if (event && event.code === 4409) {
+        // Server replaced the page content (REST/MCP edit). Stop reconnect
+        // attempts with the stale doc and rebuild after the server's
+        // invalidation window.
+        provider.disconnect();
+        setTimeout(() => setGeneration(g => g + 1), 1800);
+      }
+    });
 
     const refreshPeers = () => {
       const states = [...provider.awareness.getStates().entries()];

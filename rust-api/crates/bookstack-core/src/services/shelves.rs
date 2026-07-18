@@ -161,15 +161,44 @@ pub async fn set_books(db: &PgPool, shelf_id: i64, book_ids: &[i64]) -> Result<(
     Ok(())
 }
 
-pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
+pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
+    let shelf = fetch(db, id).await?;
+    let mut tx = db.begin().await?;
     let res = sqlx::query(
         "UPDATE shelves SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
     )
     .bind(id)
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
     if res.rows_affected() == 0 {
         return Err(CoreError::NotFound);
     }
+    super::recycle::record(&mut tx, "shelf", id, &shelf.name, Some(user_id)).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Add a book to a shelf (appended at the end); no-op if already present.
+pub async fn add_book(db: &PgPool, shelf_id: i64, book_id: i64) -> Result<()> {
+    fetch(db, shelf_id).await?;
+    super::books::fetch(db, book_id).await?;
+    sqlx::query(
+        r#"INSERT INTO shelf_books (shelf_id, book_id, "order")
+           VALUES ($1, $2, (SELECT coalesce(max("order"), -1) + 1 FROM shelf_books WHERE shelf_id = $1))
+           ON CONFLICT DO NOTHING"#,
+    )
+    .bind(shelf_id)
+    .bind(book_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn remove_book(db: &PgPool, shelf_id: i64, book_id: i64) -> Result<()> {
+    sqlx::query("DELETE FROM shelf_books WHERE shelf_id = $1 AND book_id = $2")
+        .bind(shelf_id)
+        .bind(book_id)
+        .execute(db)
+        .await?;
     Ok(())
 }

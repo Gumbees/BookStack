@@ -61,7 +61,7 @@ pub async fn delete_shelf(
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Value>> {
     user.require_edit()?;
-    shelves::delete(&state.core.db, id).await?;
+    shelves::delete(&state.core.db, user.0.id, id).await?;
     Ok(Json(json!({ "deleted": true })))
 }
 
@@ -125,7 +125,7 @@ pub async fn delete_book(
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Value>> {
     user.require_edit()?;
-    books::delete(&state.core.db, id).await?;
+    books::delete(&state.core.db, user.0.id, id).await?;
     Ok(Json(json!({ "deleted": true })))
 }
 
@@ -191,7 +191,7 @@ pub async fn delete_chapter(
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Value>> {
     user.require_edit()?;
-    chapters::delete(&state.core.db, id).await?;
+    chapters::delete(&state.core.db, user.0.id, id).await?;
     Ok(Json(json!({ "deleted": true })))
 }
 
@@ -287,7 +287,7 @@ pub async fn delete_page(
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Value>> {
     user.require_edit()?;
-    pages::delete(&state.core.db, id).await?;
+    pages::delete(&state.core.db, user.0.id, id).await?;
     state.collab.invalidate(id).await;
     Ok(Json(json!({ "deleted": true })))
 }
@@ -352,7 +352,7 @@ pub struct SearchQuery {
 
 pub async fn search(
     State(state): State<AppState>,
-    _user: AuthedUser,
+    user: AuthedUser,
     Query(params): Query<SearchQuery>,
 ) -> ApiResult<Json<Value>> {
     let types: Vec<String> = params
@@ -366,6 +366,7 @@ pub async fn search(
         &types,
         params.count.unwrap_or(20),
         params.offset.unwrap_or(0),
+        Some(user.0.id),
     )
     .await?;
     Ok(Json(serde_json::to_value(result).unwrap()))

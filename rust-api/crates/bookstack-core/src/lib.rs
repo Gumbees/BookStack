@@ -21,6 +21,11 @@ pub struct Config {
     pub admin_email: String,
     pub admin_password: String,
     pub static_dir: String,
+    /// Public base URL of this instance, used to build clickable links in
+    /// MCP responses (e.g. https://docs.example.com).
+    pub public_url: String,
+    /// IANA timezone name surfaced in MCP `_meta.time` blocks.
+    pub timezone: String,
 }
 
 impl Config {
@@ -42,6 +47,11 @@ impl Config {
             admin_email: std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@admin.com".to_string()),
             admin_password: std::env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "password".to_string()),
             static_dir: std::env::var("STATIC_DIR").unwrap_or_else(|_| "frontend/dist".to_string()),
+            public_url: std::env::var("PUBLIC_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string())
+                .trim_end_matches('/')
+                .to_string(),
+            timezone: std::env::var("TIMEZONE").unwrap_or_else(|_| "UTC".to_string()),
         }
     }
 }

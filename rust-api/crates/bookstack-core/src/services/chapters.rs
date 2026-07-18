@@ -153,7 +153,8 @@ pub async fn update(db: &PgPool, user_id: i64, id: i64, input: &UpdateChapter) -
 }
 
 /// Soft-delete a chapter; contained pages move to the book root.
-pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
+pub async fn delete(db: &PgPool, user_id: i64, id: i64) -> Result<()> {
+    let chapter = fetch(db, id).await?;
     let mut tx = db.begin().await?;
     let res = sqlx::query("UPDATE chapters SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
         .bind(id)
@@ -166,6 +167,69 @@ pub async fn delete(db: &PgPool, id: i64) -> Result<()> {
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    super::recycle::record(&mut tx, "chapter", id, &chapter.name, Some(user_id)).await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// Move a chapter (with all of its live pages) to a different book.
+pub async fn move_to_book(db: &PgPool, user_id: i64, id: i64, target_book_id: i64) -> Result<ChapterDetails> {
+    let chapter = fetch(db, id).await?;
+    books::fetch(db, target_book_id).await?;
+    if chapter.book_id == target_book_id {
+        return get(db, id).await;
+    }
+    // Re-slug within the target book to keep (book_id, slug) unique.
+    let name = chapter.name.clone();
+    let slug = unique_slug(&name, |candidate| async move {
+        let (exists,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM chapters WHERE book_id = $1 AND slug = $2 AND deleted_at IS NULL)",
+        )
+        .bind(target_book_id)
+        .bind(candidate)
+        .fetch_one(db)
+        .await?;
+        Ok(exists)
+    })
+    .await?;
+    let priority = next_priority(db, target_book_id).await?;
+
+    let mut tx = db.begin().await?;
+    sqlx::query(
+        "UPDATE chapters SET book_id = $2, slug = $3, priority = $4, updated_by = $5, updated_at = now() WHERE id = $1",
+    )
+    .bind(id)
+    .bind(target_book_id)
+    .bind(&slug)
+    .bind(priority)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    // Pages follow their chapter; re-slug any that now collide in the target book.
+    let page_ids: Vec<(i64,)> = sqlx::query_as(
+        "SELECT id FROM pages WHERE chapter_id = $1 AND deleted_at IS NULL ORDER BY priority, id",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+    sqlx::query("UPDATE pages SET book_id = $2, updated_at = now() WHERE chapter_id = $1")
+        .bind(id)
+        .bind(target_book_id)
+        .execute(&mut *tx)
+        .await?;
+    for (page_id,) in &page_ids {
+        sqlx::query(
+            "UPDATE pages p SET slug = p.slug || '-' || p.id
+             WHERE p.id = $1 AND EXISTS (
+                SELECT 1 FROM pages other
+                WHERE other.book_id = p.book_id AND other.slug = p.slug
+                  AND other.id <> p.id AND other.deleted_at IS NULL
+             )",
+        )
+        .bind(page_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    get(db, id).await
 }

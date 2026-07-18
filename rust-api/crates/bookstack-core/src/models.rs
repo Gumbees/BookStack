@@ -193,6 +193,30 @@ pub struct Tag {
     pub order: i32,
 }
 
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct Comment {
+    pub id: i64,
+    pub page_id: i64,
+    pub parent_id: Option<i64>,
+    pub markdown: String,
+    pub html: String,
+    pub created_by: Option<i64>,
+    pub updated_by: Option<i64>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A recycle-bin entry: one soft-deleted entity awaiting restore or destroy.
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct Deletion {
+    pub id: i64,
+    pub entity_type: String,
+    pub entity_id: i64,
+    pub entity_name: String,
+    pub deleted_by: Option<i64>,
+    pub deleted_at: DateTime<Utc>,
+}
+
 /// One entry in a book's contents tree.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]

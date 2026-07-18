@@ -1,6 +1,10 @@
 pub mod books;
 pub mod chapters;
+pub mod comments;
+pub mod directory;
+pub mod exports;
 pub mod pages;
+pub mod recycle;
 pub mod search;
 pub mod shelves;
 pub mod system;
